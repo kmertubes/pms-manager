@@ -333,6 +333,7 @@ async function chargerSession() {
   if (r.doit_changer_pin) return ecranPin();
   await chargerRef();
   S.tab = S.tab || (pdg() || dir() ? "tableau" : "jour");
+  if (!S.portail && (pdg() || dir() || sup())) { ecranPortail(); compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000); return; }
   rendre();
   compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000);
 }
@@ -436,7 +437,7 @@ async function console_() {
 function rendre() {
   const t = onglets(); if (!t.some(x => x[0] === S.tab)) S.tab = t[0][0];
   $("#app").innerHTML = `<header class="top"><div class="wrap">
-      <div class="row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="logout">Quitter</button></div>
+      <div class="row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div>
       <nav class="tabs" aria-label="Sections">${t.map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? "on" : ""}">${l}${k === "alertes" && S.unread ? `<span class="badge">${S.unread}</span>` : ""}</button>`).join("")}</nav>
     </div></header>
     <main class="wrap" id="main"><div class="empty"><span class="spin"></span></div></main>
@@ -4831,6 +4832,31 @@ Object.assign(A, {
   crcat: b => ouvrirDetailCaisseRes(b.dataset.k, crJourActif()).catch(e => toast(e.message, true)),
 });
 document.addEventListener("change", e => { if (e.target.id === "cr-d" && e.target.value) { S.crJour = e.target.value >= jourCompta() ? null : e.target.value; rendre(); } });
+
+/* ======== PORTAIL D'ACCUEIL (Résidence / Institut / Gestion) ======== */
+function ecranPortail() {
+  const res = poleResidence(), inst = poleInstitut();
+  const carte = (k, icone, titre, sous) => `<div class="card tap" data-act="portail" data-k="${k}" style="padding:20px">
+    <div class="line"><div class="grow"><div class="title" style="font-size:19px">${icone} ${esc(titre)}</div><div class="sub">${esc(sous)}</div></div><span style="font-size:22px;color:var(--muted)">›</span></div></div>`;
+  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="logout">Quitter</button></div></header>
+    <main class="wrap">
+      <div class="sec">Que voulez-vous ouvrir ?</div>
+      ${res ? carte("residence", "🏝️", "Résidence", "Hébergement, Bar, Piscine, Restaurant, réservations") : ""}
+      ${inst ? carte("institut", "💅", "Institut", "Luxury Beauty - Paris · soins et boutique") : ""}
+      ${carte("gestion", "📊", "Gestion", "Tableau de bord, caisses, finances")}
+    </main>`;
+}
+Object.assign(A, {
+  portail: b => {
+    const k = b.dataset.k;
+    if (k === "accueil") { S.portail = null; ecranPortail(); return; }
+    S.portail = k;
+    if (k === "residence") { S.poleTab = poleResidence()?.id || ""; S.tab = "tableau"; }
+    else if (k === "institut") { S.poleTab = poleInstitut()?.id || ""; S.tab = "tableau"; }
+    else { S.poleTab = ""; S.tab = "finances"; S.fin = "caisseresidence"; }
+    rendre();
+  },
+});
 
 const _vTableau5 = vTableau3;
 vTableau3 = async () => {
