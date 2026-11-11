@@ -43,6 +43,8 @@ nav.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-botto
 nav.tabs::-webkit-scrollbar{display:none}
 nav.tabs button{flex:none;border:0;background:transparent;color:inherit;opacity:.75;padding:7px 12px;border-radius:999px;font-size:14px;cursor:pointer;position:relative}
 nav.tabs button.on{background:var(--accent-ink);color:var(--accent);opacity:1;font-weight:600}
+nav.tabs.off button{pointer-events:none;cursor:default}
+nav.tabs.off button,nav.tabs.off button.on{opacity:.4;background:transparent;color:inherit;font-weight:400}
 .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:var(--bad);color:#fff;font-size:11px;line-height:18px;text-align:center;margin-left:4px;font-weight:700}
 main{padding-block:16px 96px;display:grid;gap:14px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow);display:grid;gap:10px;min-width:0}
@@ -437,9 +439,10 @@ async function console_() {
 function rendre() {
   if (S.portail === "residence") { ecranResidenceAccueil().catch(e => toast(e.message, true)); return; }
   const t = onglets(); if (!t.some(x => x[0] === S.tab)) S.tab = t[0][0];
+  const menuGris = S.portail === "institut";
   $("#app").innerHTML = `<header class="top"><div class="wrap">
       <div class="row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div>
-      <nav class="tabs" aria-label="Sections">${t.map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? "on" : ""}">${l}${k === "alertes" && S.unread ? `<span class="badge">${S.unread}</span>` : ""}</button>`).join("")}</nav>
+      <nav class="tabs${menuGris ? " off" : ""}" aria-label="Sections">${t.map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? "on" : ""}" ${menuGris ? "disabled" : ""}>${l}${k === "alertes" && S.unread ? `<span class="badge">${S.unread}</span>` : ""}</button>`).join("")}</nav>
     </div></header>
     <main class="wrap" id="main"><div class="empty"><span class="spin"></span></div></main>
     ${pdg() ? "" : `<div class="fab">${sup() ? '<button class="btn" data-act="newtask">＋ Tâche</button>' : ""}<button class="btn bad" data-act="signal">⚠ Signaler</button></div>`}`;
@@ -4985,6 +4988,27 @@ vTableau3 = async () => {
   if (S.tab !== "tableau" || !res || (S.poleTab && S.poleTab !== res.id)) return;
   $("#main").insertAdjacentHTML("afterbegin", `<div class="sec">Caisse Résidence</div>${await finCaisseResidence()}`);
 };
+const _vTableau6 = vTableau3;
+vTableau3 = async () => {
+  await _vTableau6();
+  if (S.tab !== "tableau" || S.portail !== "institut") return;
+  const pi = poleInstitut(); if (!pi) return;
+  $("#main").insertAdjacentHTML("afterbegin", `<div class="sec">Institut</div>${await blocInstitutAccueil(pi)}`);
+};
+async function blocInstitutAccueil(pi) {
+  const hier = ajoutJours(today(), -1);
+  const [D, clArr] = await Promise.all([
+    donneesPole(pi.id, debutJ(today()), finJ(today())),
+    q(sb.from("clotures").select("report,especes_comptees,especes_attendues").eq("pole_id", pi.id).eq("jour", hier).limit(1)),
+  ]);
+  const T = calculs(D), cl = clArr[0] || null;
+  const report = cl?.report ?? cl?.especes_comptees ?? cl?.especes_attendues ?? 0;
+  return `<div class="stats">
+    <div class="stat"><b class="money">${fcfa(T.recT)}</b><span>Recettes du jour</span></div>
+    <div class="stat"><b class="money ${T.depT ? "neg" : ""}">${fcfa(T.depT)}</b><span>Dépenses du jour</span></div>
+    <div class="stat"><b class="money">${fcfa(report)}</b><span>Report de caisse (veille)</span></div>
+  </div>`;
+}
 
 /* ======== AFFICHAGE ORDINATEUR (responsive) ========
    Le CSS d'origine est pensé mobile (colonne centrée à 640px) : sur un
