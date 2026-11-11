@@ -5253,13 +5253,13 @@ async function blocMainCouranteInstitut(pi) {
     if (!rec.length && !dep) continue;
     if (!rec.length) { lignes.push({ j, rep, poste: "/", pr: "/", r: null, d: dep }); rep -= dep; continue; }
     rec.forEach((p, i) => { const v = D.ve[p.vente_id], m = p.montant * (p.sens || 1), d = i === rec.length - 1 ? dep : 0;
-      lignes.push({ j, rep, poste: poste(v), pr: prestaDe(v), r: m, d }); rep += m - d; });
+      lignes.push({ j, rep, poste: poste(v), pr: prestaDe(v), r: m, d, venteId: p.vente_id || null }); rep += m - d; });
   }
   const recT = D.pa.reduce((t, p) => t + p.montant * (p.sens || 1), 0);
   const appT = D.mv.filter(m => m.type === "apport").reduce((t, m) => t + m.montant, 0);
   const depT = D.mv.filter(sortie).reduce((t, m) => t + m.montant, 0);
   const solde = D.report + recT + appT - depT;
-  const rows = lignes.map(l => `<tr><td>${ddmmyyyy(l.j)}</td><td class="money">${fcfa(l.rep)}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
+  const rows = lignes.map(l => `<tr${l.venteId ? ` class="tap" data-act="vente" data-id="${l.venteId}"` : ""}><td>${ddmmyyyy(l.j)}</td><td class="money">${fcfa(l.rep)}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
   return `<div class="sec">Main courante</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
     <div class="card scroll"><table class="t"><thead><tr><th>Dates</th><th>Report de caisse</th><th>Poste</th><th>Prestataire</th><th>Recettes</th><th>Dépenses</th></tr></thead>
