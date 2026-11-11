@@ -4971,8 +4971,8 @@ function ecranPortail() {
   $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="logout">Quitter</button></div></header>
     <main class="wrap">
       <div class="sec">Que voulez-vous ouvrir ?</div>
-      ${res ? carte("residence", "🏝️", "Résidence", "Hébergement, Bar, Piscine, Restaurant, réservations") : ""}
-      ${inst ? carte("institut", "💅", "Institut", "Luxury Beauty - Paris · soins et boutique") : ""}
+      ${res && voitPole(res.id) ? carte("residence", "🏝️", "Résidence", "Hébergement, Bar, Piscine, Restaurant, réservations") : ""}
+      ${inst && voitPole(inst.id) ? carte("institut", "💅", "Institut", "Luxury Beauty - Paris · soins et boutique") : ""}
       ${carte("gestion", "📊", "Gestion", "Tableau de bord, caisses, finances")}
     </main>`;
 }
