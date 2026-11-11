@@ -1,0 +1,7 @@
+name = "pms-staging"
+main = "src/worker.js"
+compatibility_date = "2026-01-01"
+
+# Déploiement de STAGING uniquement (jamais la prod).
+# Le Worker de production "pms" (pms.kmertubes.com/oceane) reste géré
+# séparément et n'est jamais touché par ce fichier.
