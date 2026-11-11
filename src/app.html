@@ -5159,7 +5159,7 @@ async function vVenteInstitut() {
   const total = enc.reduce((t, p) => t + p.montant, 0);
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
     <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
-    ${ecrit() ? `<button class="btn full" data-act="newvente">＋ Nouvelle vente</button>` : ""}
+    ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
     <div class="sec">Ventes du jour</div>
     ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
       <div class="title">${esc(v.vente_lignes.map(l => (Number(l.quantite) !== 1 ? nb(l.quantite) + " × " : "") + l.produits.nom).join(", ") || "Vente")}</div>
@@ -5168,17 +5168,23 @@ async function vVenteInstitut() {
 }
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
-  const [D, clArr] = await Promise.all([
-    donneesPole(pi.id, debutJ(today()), finJ(today())),
-    q(sb.from("clotures").select("report,especes_comptees,especes_attendues").eq("pole_id", pi.id).eq("jour", hier).limit(1)),
+  const [T, Ty] = await Promise.all([
+    syntheseGenerale(today(), today(), pi.id),
+    syntheseGenerale(hier, hier, pi.id),
   ]);
-  const T = calculs(D), cl = clArr[0] || null;
-  const report = cl?.report ?? cl?.especes_comptees ?? cl?.especes_attendues ?? 0;
-  return `<div class="stats">
-    <div class="stat"><b class="money">${fcfa(T.recT)}</b><span>Recettes du jour</span></div>
-    <div class="stat"><b class="money ${T.depT ? "neg" : ""}">${fcfa(T.depT)}</b><span>Dépenses du jour</span></div>
-    <div class="stat"><b class="money">${fcfa(report)}</b><span>Report de caisse (veille)</span></div>
-  </div>`;
+  const delta = T.solde - Ty.solde, bon = delta >= 0;
+  const l = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
+  return `<div class="card synth"><dl class="kv">
+      ${l(`Report au ${dateFr(today())}`, T.report)}
+      ${l("Recettes du jour", T.rec)}
+      ${T.app ? l("Apports en caisse", T.app) : ""}
+      ${l("<b>Total général</b>", T.general)}
+      ${l("Investissement", T.inv, T.inv ? "neg" : "")}
+      ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
+      ${T.cot ? l("Cotisations (épargne)", T.cot, "neg") : ""}
+      ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
+      <div class="solde"><span>Solde du jour</span><span class="money">${fcfa(T.solde)}</span></div></div>
+    <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
 }
 
 /* ======== AFFICHAGE ORDINATEUR (responsive) ========
