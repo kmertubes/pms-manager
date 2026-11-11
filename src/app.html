@@ -1906,9 +1906,9 @@ async function optComptes(poleId) {
 
 /* ---------- Finances : caisses à valider, banque, créances, corrections ---------- */
 async function vFinances() {
-  S.fin ||= "caisses";
-  const t = [["caisses", "Caisses du jour"], ["banque", "Banque"], ["creances", "Créances"], ["charges", "Charges"], ["journal", "Corrections"]];
-  const corps = await { caisses: finCaisses, banque: finBanque, creances: finCreances, journal: finJournal, charges: finCharges }[S.fin]();
+  S.fin ||= (S.poles.find(p => p.code === "residence") ? "caisseresidence" : "caisses");
+  const t = [["caisseresidence", "Caisse Résidence"], ["caisses", "Caisses du jour"], ["banque", "Banque"], ["creances", "Créances"], ["charges", "Charges"], ["journal", "Corrections"]];
+  const corps = await { caisseresidence: finCaisseResidence, caisses: finCaisses, banque: finBanque, creances: finCreances, journal: finJournal, charges: finCharges }[S.fin]();
   $("#main").innerHTML = `<div class="seg">${t.map(([k, l]) => `<button data-act="fin" data-k="${k}" class="${S.fin === k ? "on" : ""}">${l}</button>`).join("")}</div>${corps}`;
 }
 async function finCaisses() {
@@ -4740,6 +4740,105 @@ document.addEventListener("change", async e => {
 });
 sb.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") { S.me = null; clearInterval(S.poll); } });
 demarrer().catch(e => { $("#app").innerHTML = `<div class="wrap login"><div class="brand"><small>PMS Manager by Kmertubes</small><h1>Connexion impossible</h1></div><p class="sub">${esc(e.message)}</p><button class="btn" onclick="location.reload()">Réessayer</button></div>`; });
+
+/* ======== TABLEAU DE BORD CAISSE RÉSIDENCE ========
+   Date, Report, Hébergement, Bar, Piscine, Resto, Crédits, Dépenses, Versement, Solde en caisse.
+   Calculé en direct depuis ventes/paiements/achats/clotures (ne dépend d'aucune mise à jour manuelle).
+   Visible dans Tableau (pôle Résidence) et dans Finances › Caisse Résidence.
+   Ne touche jamais au pôle Institut / Luxury Beauty - Paris. */
+function poleResidence() { return S.poles.find(p => p.code === "residence"); }
+const crJourActif = () => S.crJour || jourCompta();
+
+async function donneesCaisseResidence(jour) {
+  const pole = poleResidence(); if (!pole) return null;
+  const [clArr, prevArr] = await Promise.all([
+    q(sb.from("clotures").select("*").eq("pole_id", pole.id).eq("jour", jour).limit(1)),
+    q(sb.from("clotures").select("*").eq("pole_id", pole.id).lt("jour", jour).order("jour", { ascending: false }).limit(1)),
+  ]);
+  const cl = clArr[0] || null, prev = prevArr[0] || null;
+  const D = await donneesPole(pole.id, debutJ(jour), finJ(jour));
+  const T = calculs(D);
+  const ach = await q(sb.from("achats").select("id,total,libelle,caisse_id").in("caisse_id", D.ids).eq("annule", false).eq("date_achat", jour));
+  const achT = ach.reduce((t, a) => t + (a.total || 0), 0);
+  const depenses = T.depT + achT;
+  const report = cl?.report ?? (prev ? (prev.especes_comptees ?? prev.especes_attendues ?? 0) : 0);
+  const versement = T.recT - depenses;
+  const solde = report + versement;
+  const credT = T.cred.reduce((t, c) => t + c.montant, 0);
+  const pocheConnue = cl && (cl.report_cash != null || cl.solde_om != null || cl.solde_momo != null || cl.report_acomptes != null);
+  const pocheTot = pocheConnue ? Number(cl.report_cash || 0) + Number(cl.solde_om || 0) + Number(cl.solde_momo || 0) + Number(cl.report_acomptes || 0) : null;
+  return { pole, cl, prev, D, T, ach, achT, depenses, report, versement, solde, credT, pocheTot, jour };
+}
+
+async function finCaisseResidence() {
+  const jour = crJourActif(), C = await donneesCaisseResidence(jour);
+  if (!C) return '<div class="empty">Aucun pôle Résidence configuré.</div>';
+  const { T, cl } = C, svc = k => T.svc[k] || 0;
+  const tuile = (label, val, k, neg) => `<div class="stat tap" data-act="crcat" data-k="${esc(k)}"><b class="money ${neg || val < 0 ? "neg" : ""}">${fcfa(val)}</b><span>${esc(label)}</span></div>`;
+  const ecartPoche = C.pocheTot != null ? C.pocheTot - C.report : null;
+  return `
+    <div class="navj"><button class="btn ghost" data-act="crjour" data-d="-1" aria-label="Jour précédent">‹</button>
+      <input class="i" type="date" id="cr-d" value="${jour}" max="${jourCompta()}">
+      <button class="btn ghost" data-act="crjour" data-d="1" aria-label="Jour suivant" ${jour >= jourCompta() ? "disabled" : ""}>›</button></div>
+    <p class="sub">Résidence · ${esc(dateFr(jour))}${cl?.statut === "fermee" ? ' <span class="chip n">Journée fermée</span>' : ""}</p>
+    <div class="card" style="border-color:var(--accent)">
+      <div class="sec" style="margin:0">Report de caisse</div><b class="money" style="font-size:22px">${fcfa(C.report)}</b>
+      ${C.pocheTot != null
+        ? `<div class="line" style="flex-wrap:wrap;gap:8px 16px"><span class="sub">Cash <b>${fcfa(cl.report_cash || 0)}</b></span><span class="sub">OM <b>${fcfa(cl.solde_om || 0)}</b></span><span class="sub">MoMo <b>${fcfa(cl.solde_momo || 0)}</b></span><span class="sub">Acomptes <b>${fcfa(cl.report_acomptes || 0)}</b></span></div>
+          ${ecartPoche ? `<p class="note">Écart de ${fcfa(Math.abs(ecartPoche))} entre le report et la somme des poches${cl?.commentaire ? " — voir commentaire" : ""}.</p>` : ""}`
+        : '<p class="note">Répartition Cash / OM / MoMo / Acomptes pas encore saisie pour ce jour.</p>'}
+    </div>
+    <div class="stats">
+      ${tuile("Hébergement", svc("Hébergement"), "Hébergement")}
+      ${tuile("Bar", svc("Bar"), "Bar")}
+      ${tuile("Piscine", svc("Piscine"), "Piscine")}
+      ${tuile("Resto", svc("Restaurant"), "Restaurant")}
+      ${T.svc["Restaurant mobile"] ? tuile("Resto mobile", svc("Restaurant mobile"), "Restaurant mobile") : ""}
+      ${T.svc["Loisirs & excursions"] ? tuile("Loisirs", svc("Loisirs & excursions"), "Loisirs & excursions") : ""}
+      ${tuile("Crédits (ventes non payées)", C.credT, "credits", true)}
+      ${tuile("Dépenses", C.depenses, "depenses", true)}
+      <div class="stat"><b class="money ${C.versement >= 0 ? "pos" : "neg"}">${fcfa(C.versement)}</b><span>Versement (recettes − dépenses)</span></div>
+      <div class="stat"><b class="money">${fcfa(C.solde)}</b><span>Solde en caisse</span></div>
+    </div>
+    <p class="note">Versement = recettes de la journée − dépenses. Solde en caisse = report + versement. Touchez une case pour voir le détail, ligne par ligne.</p>`;
+}
+
+async function ouvrirDetailCaisseRes(cle, jour) {
+  const C = await donneesCaisseResidence(jour);
+  const titres = { credits: "Crédits (ventes non payées)", depenses: "Dépenses" };
+  let html = "";
+  if (cle === "depenses") {
+    const rows = [...C.ach.map(a => ({ libelle: a.libelle || "Achat", montant: a.total, svc: caisse(a.caisse_id)?.nom })),
+      ...C.T.deps.map(d => ({ libelle: d.libelle, montant: d.montant, svc: caisse(d.caisse_id)?.nom }))];
+    html = rows.length ? rows.map(r => `<div class="line"><span class="grow">${esc(r.libelle)}${r.svc ? ` · ${esc(r.svc)}` : ""}</span><span class="money neg">− ${fcfa(r.montant)}</span></div>`).join("") : '<div class="empty">Aucune dépense ce jour.</div>';
+  } else if (cle === "credits") {
+    html = C.T.cred.length ? C.T.cred.map(c => `<div class="line"><span class="grow">${esc(c.nom)}${c.svc ? " · " + esc(c.svc) : ""}${c.ech ? ` · échéance ${esc(dateFr(c.ech))}` : ""}</span><span class="money neg">${fcfa(c.montant)}</span></div>`).join("") : '<div class="empty">Aucun crédit ce jour.</div>';
+  } else {
+    const c = C.D.cs.find(x => x.nom === cle);
+    if (c?.type === "hebergement") {
+      const pa = C.D.pa.filter(p => p.caisse_id === c.id);
+      html = pa.length ? pa.map(p => `<div class="line"><span class="grow">${heure(p.created_at)} · ${esc(MOYEN[p.moyen] || p.moyen)}</span><span class="money">${fcfa(p.montant * (p.sens || 1))}</span></div>`).join("") : '<div class="empty">Aucun encaissement ce jour.</div>';
+    } else {
+      const ve = C.D.ve.filter(v => v.caisse_id === c?.id);
+      html = ve.length ? ve.map(v => `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><span class="grow">${heure(v.created_at)}${v.credit ? ' <span class="chip w">Crédit</span>' : ""}</span><span class="money">${fcfa(v.total)}</span></div></div>`).join("") : '<div class="empty">Aucune vente ce jour.</div>';
+    }
+  }
+  openSheet(titres[cle] || `${esc(cle)} · ${esc(dateFr(jour))}`, html);
+}
+
+Object.assign(A, {
+  crjour: b => { const d = b.dataset.d; S.crJour = d === "0" ? null : ajoutJours(crJourActif(), +d); rendre(); },
+  crcat: b => ouvrirDetailCaisseRes(b.dataset.k, crJourActif()).catch(e => toast(e.message, true)),
+});
+document.addEventListener("change", e => { if (e.target.id === "cr-d" && e.target.value) { S.crJour = e.target.value >= jourCompta() ? null : e.target.value; rendre(); } });
+
+const _vTableau5 = vTableau3;
+vTableau3 = async () => {
+  await _vTableau5();
+  const res = poleResidence();
+  if (S.tab !== "tableau" || !res || (S.poleTab && S.poleTab !== res.id)) return;
+  $("#main").insertAdjacentHTML("afterbegin", `<div class="sec">Caisse Résidence</div>${await finCaisseResidence()}`);
+};
 </script>
 </body>
 </html>
