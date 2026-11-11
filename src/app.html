@@ -208,6 +208,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&
 const chip = (m, k) => { const v = m[k] || [k, "n"]; return `<span class="chip ${v[1]}">${esc(v[0])}</span>`; };
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 const debutJour = () => today() + "T00:00:00+01:00";
+const heureActuelle = () => new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 const heure = ts => ts ? new Date(ts).toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit", timeZone: TZ }) : "";
 const dateFr = d => d ? new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString("fr-FR", { weekday:"short", day:"numeric", month:"short", timeZone: TZ }) : "";
 const quand = ts => { if (!ts) return ""; const d = new Date(ts); const j = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(d); return (j === today() ? "aujourd'hui " : dateFr(ts) + " ") + heure(ts); };
@@ -332,10 +333,48 @@ async function chargerSession() {
   if (!S.role) { $("#app").innerHTML = `<div class="wrap login"><div class="brand"><small>${esc(S.etab.nom)}</small><h1>Accès non autorisé</h1></div><p class="sub">Votre compte n'est pas rattaché à cet établissement.</p><button class="btn ghost" data-act="logout">Se déconnecter</button></div>`; return; }
   if (r.doit_changer_pin) return ecranPin();
   await chargerRef();
+  if (!pdg()) {
+    const pt = await pointagesAujourdhui();
+    if (!pt.some(p => p.type === "arrivee")) { ecranPointageArrivee(); demarrerCouvreFeu(); return; }
+  }
   S.tab = S.tab || (pdg() || dir() ? "tableau" : "jour");
-  if (!S.portail && (pdg() || dir() || sup())) { ecranPortail(); compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000); return; }
+  if (!S.portail && (pdg() || dir() || sup())) { ecranPortail(); compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000); demarrerCouvreFeu(); return; }
   rendre();
   compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000);
+  demarrerCouvreFeu();
+}
+async function pointagesAujourdhui() {
+  return await q(sb.from("pointages").select("type,horodatage").eq("membre_id", S.me.membre_id).gte("horodatage", debutJour()).order("horodatage"));
+}
+async function ecranPointageArrivee() {
+  $("#app").innerHTML = `<div class="wrap login">
+    <div class="brand"><small>${esc(S.etab.nom)}</small><h1>Bonjour ${esc(S.me.nom_complet.split(" ")[0])}</h1></div>
+    <div class="card punch">
+      <div class="t">${esc(dateFr(today()))}</div>
+      <div class="big">Vous n'avez pas encore pointé votre arrivée</div>
+      <button class="btn full" data-act="pointer" data-type="arrivee">Pointer mon arrivée</button>
+      <div class="t">Votre position est vérifiée au moment du pointage.</div>
+    </div>
+    <p class="note">Le reste de l'application s'ouvre une fois votre arrivée pointée.</p>
+    <button class="btn ghost full" data-act="logout">Se déconnecter</button></div>`;
+}
+function demarrerCouvreFeu() {
+  clearInterval(S.couvreFeu);
+  verifierCouvreFeu();
+  S.couvreFeu = setInterval(verifierCouvreFeu, 60000);
+}
+async function verifierCouvreFeu() {
+  if (!S.me || pdg()) return;
+  if (heureActuelle() < "20:00") return;
+  let pt; try { pt = await pointagesAujourdhui(); } catch { return; }
+  const arr = pt.find(p => p.type === "arrivee"), dep = [...pt].reverse().find(p => p.type === "depart");
+  if (dep && (!arr || dep.horodatage > arr.horodatage)) return;
+  clearInterval(S.poll); clearInterval(S.couvreFeu);
+  await sb.auth.signOut().catch(() => {});
+  S.me = null; S.portail = null;
+  $("#app").innerHTML = `<div class="wrap login"><div class="brand"><small>${esc(S.etab?.nom || "")}</small><h1>Session fermée</h1></div>
+    <p class="sub">Il est 20 h et aucun départ n'a été pointé : votre session a été fermée automatiquement. Reconnectez-vous et pointez votre arrivée pour continuer.</p></div>`;
+  setTimeout(() => ecranConnexion(), 2500);
 }
 async function chargerRef() {
   const [m, es, po] = await Promise.all([
@@ -513,7 +552,7 @@ async function pointer(type, btn) {
     const r = await rpc("pointer", { p_etablissement: S.etab.id, p_type: type, p_lat: pos?.latitude ?? null, p_lng: pos?.longitude ?? null });
     toast((type === "arrivee" ? "Arrivée" : "Départ") + " enregistré à " + heure(r.horodatage) + (pos ? "" : " (position non disponible)"));
     if (r.dans_perimetre === false) toast(`Attention : vous semblez être à ${r.distance_m} m de la résidence`, true);
-    rendre();
+    await chargerSession();
   });
 }
 
