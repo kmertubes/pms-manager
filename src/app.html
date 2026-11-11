@@ -4924,10 +4924,16 @@ async function resTableauBord() {
     <p class="sub">${du === au ? esc(dateFr(du)) : `du ${esc(dateFr(du))} au ${esc(dateFr(au))}`}</p>
     <div class="sec">Actuellement</div>
     <div class="stats" id="acc-stats"><div class="empty"><span class="spin"></span></div></div>
-    <div class="sec">Hébergements</div>
-    <div id="acc-logs"><div class="empty"><span class="spin"></span></div></div>`;
+    <div class="sec">Logements</div>
+    <div id="acc-logs"><div class="empty"><span class="spin"></span></div></div>
+    <div class="sec">Présence</div>
+    <div id="acc-presence"><div class="empty"><span class="spin"></span></div></div>`;
   if (!pole) { $("#acc-stats").innerHTML = '<div class="empty">Aucun pôle Résidence configuré.</div>'; return; }
-  const [D] = await Promise.all([donneesPole(pole.id, debutJ(du), finJ(au)), blocLogementsOccupation().then(h => { const l = $("#acc-logs"); if (l) l.innerHTML = h; })]);
+  const [D] = await Promise.all([
+    donneesPole(pole.id, debutJ(du), finJ(au)),
+    blocLogementsOccupation().then(h => { const l = $("#acc-logs"); if (l) l.innerHTML = h; }),
+    blocPresence().then(h => { const l = $("#acc-presence"); if (l) l.innerHTML = h; }),
+  ]);
   const T = calculs(D), svc = k => T.svc[k] || 0;
   const z = $("#acc-stats"); if (!z) return;
   z.innerHTML = `
@@ -4935,6 +4941,16 @@ async function resTableauBord() {
     <div class="stat"><b class="money">${fcfa(svc("Bar"))}</b><span>Bar</span></div>
     <div class="stat"><b class="money">${fcfa(svc("Piscine"))}</b><span>Piscine</span></div>
     <div class="stat"><b class="money">${fcfa(svc("Restaurant"))}</b><span>Resto</span></div>`;
+}
+async function blocPresence() {
+  const perso = S.membres.filter(m => m.actif && m.role !== "pdg");
+  if (!perso.length) return '<div class="empty">Aucun employé.</div>';
+  const pt = await q(sb.from("pointages").select("membre_id,type,horodatage,dans_perimetre").eq("etablissement_id", S.etab.id).gte("horodatage", debutJour()).order("horodatage"));
+  const pres = {}; pt.forEach(p => { (pres[p.membre_id] ||= {})[p.type] = p; });
+  return `<div class="stats"><div class="stat"><b>${Object.values(pres).filter(p => p.arrivee).length}/${perso.length}</b><span>personnes présentes</span></div></div>
+    <div class="card scroll"><table class="t"><thead><tr><th>Personne</th><th>Arrivée</th><th>Départ</th></tr></thead><tbody>
+      ${perso.map(m => { const p = pres[m.id] || {}; return `<tr><td>${esc(m.profils.nom_complet)}</td><td>${p.arrivee ? heure(p.arrivee.horodatage) + (p.arrivee.dans_perimetre === false ? " ⚠" : "") : '<span class="sub">absent</span>'}</td><td>${p.depart ? heure(p.depart.horodatage) : "—"}</td></tr>`; }).join("")}
+    </tbody></table><p class="note">⚠ : pointage fait hors de la résidence.</p></div>`;
 }
 async function blocLogementsOccupation() {
   const logs = S.espaces.filter(e => e.type === "logement" && !e.privatisation);
