@@ -735,6 +735,7 @@ async function vResa() {
   const jours = [...Array(7)].map((_, i) => ajoutJours(today(), i));
   const mins = await blocMinuteurs("resa");
   $("#main").innerHTML = `${ecrit() ? '<button class="btn full" data-act="newresa">＋ Nouvelle réservation</button>' : ""}
+    <button class="btn full ghost" data-act="dispo">Disponibilité</button>
     ${mins}
     <div class="sec">Planning des 7 prochains jours</div>
     <div class="card"><div class="scroll"><table class="pl"><thead><tr><th></th>${jours.map(j => `<th>${esc(dateFr(j).replace(/\./g, ""))}</th>`).join("")}</tr></thead><tbody>
@@ -795,6 +796,34 @@ function feuilleResa(d = {}) {
   $("#r-n").oninput = () => { prix(); info(); }; $("#r-date").onchange = info; $("#r-h").onchange = info;
   $("#r-prix").oninput = () => manuel = true;
   espace();
+}
+function feuilleDispo() {
+  const da = S.dispoDa || today(), dd = S.dispoDd || ajoutJours(da, 1);
+  openSheet("Disponibilité", `
+    <div class="duo"><label class="f">Date d'arrivée<input class="i" type="date" id="dp-da" value="${da}"></label>
+    <label class="f">Date de départ<input class="i" type="date" id="dp-dd" value="${dd}" min="${ajoutJours(da, 1)}"></label></div>
+    <div id="dp-res"></div>`);
+  const relancer = () => { S.dispoDa = $("#dp-da").value || today(); S.dispoDd = $("#dp-dd").value || ajoutJours(S.dispoDa, 1); if (S.dispoDd <= S.dispoDa) S.dispoDd = ajoutJours(S.dispoDa, 1); calculerDispo(); };
+  $("#dp-da").onchange = relancer; $("#dp-dd").onchange = relancer;
+  calculerDispo();
+}
+async function calculerDispo() {
+  const da = S.dispoDa || today(), dd = S.dispoDd || ajoutJours(da, 1);
+  const z = $("#dp-res"); if (!z) return;
+  z.innerHTML = spinner;
+  const nuits = []; for (let j = da; j < dd; j = ajoutJours(j, 1)) nuits.push(j);
+  if (!nuits.length) nuits.push(da);
+  const rs = await q(sb.from("reservations").select("id,espace_id,debut,fin,statut,formules(mode)")
+    .eq("etablissement_id", S.etab.id).in("statut", ["demande", "confirmee", "en_cours"])
+    .lt("debut", aDouala(ajoutJours(nuits[nuits.length - 1], 1)).toISOString()).gte("fin", aDouala(da).toISOString()));
+  const logs = S.espaces.filter(e => e.type === "logement");
+  const occupe = e => rs.some(x => (x.espace_id === e.id || (!e.privatisation && S.espaces.find(s => s.id === x.espace_id)?.privatisation)) && nuits.some(j => couvre(x, j)));
+  const libres = logs.filter(e => !occupe(e)), occ = logs.filter(e => occupe(e));
+  const z2 = $("#dp-res"); if (!z2) return;
+  z2.innerHTML = `<p class="sub">${esc(dateFr(da))} → ${esc(dateFr(dd))} (${nuits.length} nuit${nuits.length > 1 ? "s" : ""})</p>
+    <div class="sec">Disponibles (${libres.length})</div>
+    ${libres.map(e => `<div class="card tap" ${ecrit() ? `data-act="newresa" data-espace="${e.id}" data-jour="${da}"` : ""}><div class="line"><div class="grow title">${esc(e.nom)}</div><span class="chip ok">Libre</span></div></div>`).join("") || '<div class="empty">Aucun logement libre sur cette période.</div>'}
+    ${occ.length ? `<div class="sec">Déjà occupés (${occ.length})</div>${occ.map(e => `<div class="card"><div class="line"><div class="grow title">${esc(e.nom)}</div><span class="chip w">Occupé</span></div></div>`).join("")}` : ""}`;
 }
 function calculResa(x) {
   const j = $("#r-date").value || today(), h = $("#r-h").value || "13:00";
@@ -1154,6 +1183,7 @@ const A2 = {
   per: b => { S.per = b.dataset.p; rendre(); },
   liberer: b => act(b, async () => { await rpc("cloturer_chrono", { p_chrono: b.dataset.id }); toast(b.dataset.resa ? "Départ enregistré, ménage envoyé" : "Place libérée"); rendre(); }),
   newresa: b => feuilleResa({ espace: b.dataset.espace, jour: b.dataset.jour }),
+  dispo: () => feuilleDispo(),
   resa: b => ouvrirResa(b.dataset.id).catch(e => toast(e.message, true)),
   creerresa: b => act(b, async () => {
     const x = formulesHeb($("#r-esp").value).find(f => f.id === $("#r-for").value);
