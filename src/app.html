@@ -1001,6 +1001,7 @@ async function ouvrirVente(id) {
     ${ecrit() && cuisine && suivant && v.statut !== "annulee" ? `<button class="btn full ghost" data-act="vstatut" data-id="${id}" data-s="${suivant[0]}">Passer à : ${suivant[1]}</button>` : ""}
     ${v.reservation_id && reste > 0 ? '<p class="note">Cette consommation est sur la note du séjour. Encaissez-la ici quand le client paie.</p>' : ""}
     ${ecrit() && reste > 0 && v.statut !== "annulee" ? `<div class="sec">Encaisser</div>${champsPaiement("pv", reste)}<button class="btn full ok" data-act="payvente" data-id="${id}">Encaisser ${fcfa(reste)}</button>` : ""}
+    ${(dir() || pdg()) && v.statut !== "annulee" ? `<button class="btn sm ghost" data-act="corrdatevente" data-id="${id}" data-date="${jourCompta(new Date(v.created_at))}">Corriger la date</button>` : ""}
     ${dir() && v.statut !== "annulee" ? `<button class="btn sm ghost" data-act="annulervente" data-id="${id}">Annuler cette vente</button>` : ""}`;
 }
 
@@ -2356,6 +2357,14 @@ const A6 = {
   annulervente: b => openSheet("Annuler la vente", `<p>Les paiements de cette vente sont annulés et le stock est remis. La vente reste visible, marquée annulée.</p>${motif()}
     <button class="btn full bad" data-act="doannulvente" data-id="${b.dataset.id}">Annuler la vente</button>`),
   doannulvente: b => act(b, async () => { await rpc("annuler_vente", { p_vente: b.dataset.id, p_motif: lireMotif() }); closeSheet(); toast("Vente annulée, stock remis"); rendre(); }),
+  corrdatevente: b => openSheet("Corriger la date de la vente", `<p class="note">Change le jour où cette vente compte dans la main courante et les rapports, sans toucher au montant ni aux paiements.</p>
+    <label class="f">Date réelle de la vente<input class="i" type="date" id="cd-d" value="${b.dataset.date}" max="${today()}"></label>${motif("cd-m", "Ex. saisie faite le lendemain par erreur")}
+    <button class="btn full" data-act="docorrdatevente" data-id="${b.dataset.id}">Enregistrer</button>`),
+  docorrdatevente: b => act(b, async () => {
+    if (!$("#cd-d").value) throw new Error("Choisissez une date");
+    await rpc("corriger_date_vente", { p_vente: b.dataset.id, p_date: $("#cd-d").value, p_motif: lireMotif("cd-m") });
+    closeSheet(); toast("Date de la vente corrigée"); rendre();
+  }),
   credit: b => openSheet("Vente à crédit", `<p>Reste à payer : <b>${fcfa(b.dataset.r)}</b></p>
     <div class="duo"><label class="f">Nom du client<input class="i" id="cr-n"></label><label class="f">Téléphone<input class="i" id="cr-t" type="tel" inputmode="tel"></label></div>
     <label class="f">Paiera au plus tard le<input class="i" type="date" id="cr-e" value="${ajoutJours(today(), 7)}"></label>
@@ -3265,7 +3274,7 @@ async function blocJournee(c) {
     ${dir() ? `<div class="btns">${!cl?.ouverte_le ? `<button class="btn" data-act="ouvrirj" data-p="${pid}">Ouvrir la caisse</button>` : ""}<button class="btn ghost" data-act="fermerj" data-p="${pid}">Fermer la caisse</button></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn sm ghost" data-act="mvc" data-t="depense">Dépense</button><button class="btn sm ghost" data-act="mvc" data-t="versement_banque">Versement banque</button><button class="btn sm ghost" data-act="mvc" data-t="apport">Apport</button></div>` : ""}
     ${mvts.length ? `<div class="sub" style="margin-top:6px">${mvts.map(m => `<div class="line"><span class="grow">${heure(m.created_at)} · ${esc(MVC[m.type])} · ${esc(m.libelle)}</span><span class="money">${m.type === "apport" ? "+" : "−"} ${fcfa(m.montant)}</span>
-      ${dir() ? `<button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle)}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button>` : ""}</div>`).join("")}</div>` : ""}
+      ${dir() ? `<button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle)}" data-date="${jourCompta(new Date(m.created_at))}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button>` : ""}</div>`).join("")}</div>` : ""}
     ${dir() ? '<p class="note">Le personnel vend à toute heure. Ouvrir rattache à la journée toutes les ventes faites depuis 06 h 30 ; fermer arrête les comptes et prépare le rapport du jour.</p>' : ""}</div>`;
 }
 async function vCaisse3() {
@@ -3314,9 +3323,15 @@ const A11 = {
   rapjs: b => act(b, async () => { const j = b.dataset.j || $("#rp-j")?.value || jourCompta(), t = b.dataset.t || S.rap.type;
     await (t === "semaine" ? rapportSemaine(j, b.dataset.p) : rapportJour(j, b.dataset.p)); toast("Rapport téléchargé"); }),
   rapjour: b => A11.rapjs(b),
-  modmvt: b => openSheet("Modifier le mouvement", `<label class="f">Libellé<input class="i" id="mm-l" value="${esc(b.dataset.l)}"></label><label class="f">Montant (FCFA)<input class="i" type="number" inputmode="numeric" id="mm-m" value="${b.dataset.m}"></label>${motif()}
-    <button class="btn full" data-act="domodmvt" data-id="${b.dataset.id}">Enregistrer</button>`),
-  domodmvt: b => act(b, async () => { await rpc("modifier_mouvement", { p_id: b.dataset.id, p_montant: int("#mm-m"), p_libelle: $("#mm-l").value, p_motif: lireMotif() }); closeSheet(); toast("Mouvement modifié"); rendre(); }),
+  modmvt: b => openSheet("Modifier le mouvement", `<label class="f">Libellé<input class="i" id="mm-l" value="${esc(b.dataset.l)}"></label><label class="f">Montant (FCFA)<input class="i" type="number" inputmode="numeric" id="mm-m" value="${b.dataset.m}"></label>
+    <label class="f">Date réelle de la dépense<input class="i" type="date" id="mm-d" value="${b.dataset.date || today()}" max="${today()}"></label>${motif()}
+    <button class="btn full" data-act="domodmvt" data-id="${b.dataset.id}" data-date="${b.dataset.date || today()}">Enregistrer</button>`),
+  domodmvt: b => act(b, async () => {
+    const m = lireMotif();
+    await rpc("modifier_mouvement", { p_id: b.dataset.id, p_montant: int("#mm-m"), p_libelle: $("#mm-l").value, p_motif: m });
+    if ($("#mm-d")?.value && $("#mm-d").value !== b.dataset.date) await rpc("corriger_date_mouvement", { p_id: b.dataset.id, p_date: $("#mm-d").value, p_motif: m });
+    closeSheet(); toast("Mouvement modifié"); rendre();
+  }),
   modpay: b => openSheet("Modifier le paiement", `<div class="duo"><label class="f">Montant (FCFA)<input class="i" type="number" inputmode="numeric" id="mp-m" value="${b.dataset.m}"></label>
     <label class="f">Moyen<select class="i" id="mp-mo">${Object.entries(MOYEN).map(([k, v]) => `<option value="${k}" ${k === b.dataset.mo ? "selected" : ""}>${v}</option>`).join("")}</select></label></div>
     <label class="f">N° de transaction<input class="i" id="mp-r" value="${esc(b.dataset.r || "")}"></label>${motif()}
@@ -4272,7 +4287,7 @@ blocJournee = async c => {
     ${ecrit() && (!old || dir()) ? `<div class="btns"><button class="btn sm ghost" data-act="mvc" data-t="depense">Dépense</button>${old ? "" : '<button class="btn sm ghost" data-act="mvc" data-t="versement_banque">Versement banque</button>'}<button class="btn sm ghost" data-act="mvc" data-t="apport">Apport</button></div>` : ""}
     ${old && dir() ? '<p class="note">Une dépense ou un apport ajouté ici est daté de cette journée (noté dans les corrections).</p>' : ""}
     ${mvts.length ? `<div class="sub" style="margin-top:6px">${mvts.map(m => `<div class="line"><span class="grow">${heure(m.created_at)} · ${esc(MVC[m.type])} · ${esc(m.libelle)}</span><span class="money">${m.type === "apport" ? "+" : "−"} ${fcfa(m.montant)}</span>
-      ${dir() ? `<button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle)}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button>` : ""}</div>`).join("")}</div>` : ""}
+      ${dir() ? `<button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle)}" data-date="${jourCompta(new Date(m.created_at))}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button>` : ""}</div>`).join("")}</div>` : ""}
     ${nf.length ? `<div class="sec">Journées non fermées (${nf.length})</div><div class="chips">${nf.map(x => `<button data-act="cjour" data-j="${x}">${esc(dateFr(x))}</button>`).join("")}</div>
       <p class="note">Touchez une journée pour l'ouvrir, vérifier ses ventes et la fermer.</p>` : ""}
   </div>`;
