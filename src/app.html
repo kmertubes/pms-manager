@@ -339,6 +339,7 @@ async function chargerSession() {
   }
   S.tab = S.tab || (pdg() || dir() ? "tableau" : "jour");
   if (!S.portail && (pdg() || dir() || sup())) { ecranPortail(); compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000); demarrerCouvreFeu(); return; }
+  if (!S.portail && !pdg() && !dir() && !sup()) { const mp = monPole(); if (mp) S.portail = mp.code === "institut" ? "institut" : "residence"; }
   rendre();
   compterAlertes(); clearInterval(S.poll); S.poll = setInterval(compterAlertes, 60000);
   demarrerCouvreFeu();
@@ -1683,6 +1684,23 @@ function voitPole(pid) {
 }
 const nomPole = id => S.poles.find(p => p.id === id)?.nom || "Tous les pôles";
 const poleDefaut = caisseId => caisse(caisseId)?.pole_id || (S.poles.find(p => voitPole(p.id)) || S.poles[0])?.id || null;
+/* pôle d'appartenance d'un employé simple (d'après ses postes), pour le router automatiquement */
+function monPole() {
+  const ps = mesPostes().map(id => S.postes.find(p => p.id === id)).filter(Boolean);
+  const avecPole = ps.find(p => p.pole_id);
+  return avecPole ? S.poles.find(p => p.id === avecPole.pole_id) || null : null;
+}
+/* onglets de l'écran Résidence selon le poste de l'employé (direction/pdg/superviseur voient tout) */
+const POSTE_TAB_RES = { "Bar": "bar", "Cuisine": "restaurant", "Prise de commandes": "restaurant", "Livraison": "restaurant", "Piscine et jardin": "piscine", "Réception": "reservation", "Ménage": "menage" };
+function tabsResidence() {
+  const TOUS = [["tableau", "Tableau de bord"], ["reservation", "Hébergement"], ["piscine", "Piscine"], ["bar", "Bar"], ["restaurant", "Restaurant"]];
+  if (dir() || pdg() || sup()) return TOUS;
+  const mine = new Set(["tableau"]);
+  mesPostes().map(id => S.postes.find(p => p.id === id)?.nom).filter(Boolean).forEach(n => { if (POSTE_TAB_RES[n]) mine.add(POSTE_TAB_RES[n]); });
+  const tabs = TOUS.filter(([k]) => mine.has(k));
+  if (mine.has("menage")) tabs.push(["menage", "Ménage"]);
+  return tabs;
+}
 
 /* stock disponible d'un produit vendu, d'après sa fiche recette */
 function dispo(pid) {
@@ -4973,7 +4991,7 @@ function ecranPortail() {
       <div class="sec">Que voulez-vous ouvrir ?</div>
       ${res && voitPole(res.id) ? carte("residence", "🏝️", "Résidence", "Hébergement, Bar, Piscine, Restaurant, réservations") : ""}
       ${inst && voitPole(inst.id) ? carte("institut", "💅", "Institut", "Luxury Beauty - Paris · soins et boutique") : ""}
-      ${carte("gestion", "📊", "Gestion", "Tableau de bord, caisses, finances")}
+      ${(pdg() || dir() || sup()) ? carte("gestion", "📊", "Gestion", "Tableau de bord, caisses, finances") : ""}
     </main>`;
 }
 function perAcc() {
@@ -4981,22 +4999,18 @@ function perAcc() {
   return du <= au ? [du, au] : [au, du];
 }
 async function ecranResidenceAccueil() {
-  S.resTab = S.resTab || "tableau";
-  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button><button class="iconbtn" data-act="logout">Quitter</button></div></header>
+  const tabs = tabsResidence();
+  if (!S.resTab || !tabs.some(([k]) => k === S.resTab)) S.resTab = tabs.find(([k]) => k !== "tableau")?.[0] || "tableau";
+  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div></header>
     <main class="wrap">
-      <div class="seg">
-        <button data-act="restab" data-k="tableau" class="${S.resTab === "tableau" ? "on" : ""}">Tableau de bord</button>
-        <button data-act="restab" data-k="reservation" class="${S.resTab === "reservation" ? "on" : ""}">Hébergement</button>
-        <button data-act="restab" data-k="piscine" class="${S.resTab === "piscine" ? "on" : ""}">Piscine</button>
-        <button data-act="restab" data-k="bar" class="${S.resTab === "bar" ? "on" : ""}">Bar</button>
-        <button data-act="restab" data-k="restaurant" class="${S.resTab === "restaurant" ? "on" : ""}">Restaurant</button>
-      </div>
+      <div class="seg">${tabs.map(([k, l]) => `<button data-act="restab" data-k="${k}" class="${S.resTab === k ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
       <div id="main"></div>
     </main>`;
   if (S.resTab === "reservation") { await vResa(); return; }
   if (S.resTab === "piscine") { await vPiscineRes(); return; }
   if (S.resTab === "bar") { await vBarRes(); return; }
   if (S.resTab === "restaurant") { await vRestaurantRes(); return; }
+  if (S.resTab === "menage") { await vEspaces(); return; }
   await resTableauBord();
 }
 async function vPiscineRes() {
@@ -5130,7 +5144,7 @@ vTableau3 = async () => {
 };
 async function ecranInstitutAccueil() {
   S.instTab = S.instTab || "tableau";
-  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button><button class="iconbtn" data-act="logout">Quitter</button></div></header>
+  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div></header>
     <main class="wrap">
       <div class="seg">
         <button data-act="insttab" data-k="tableau" class="${S.instTab === "tableau" ? "on" : ""}">Tableau de bord</button>
