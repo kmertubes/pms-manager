@@ -4923,9 +4923,11 @@ async function resTableauBord() {
     <div class="duo"><label class="f">Du<input class="i" type="date" id="acc-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="acc-au" value="${au}" max="${today()}"></label></div>
     <p class="sub">${du === au ? esc(dateFr(du)) : `du ${esc(dateFr(du))} au ${esc(dateFr(au))}`}</p>
     <div class="sec">Actuellement</div>
-    <div class="stats" id="acc-stats"><div class="empty"><span class="spin"></span></div></div>`;
+    <div class="stats" id="acc-stats"><div class="empty"><span class="spin"></span></div></div>
+    <div class="sec">Hébergements</div>
+    <div id="acc-logs"><div class="empty"><span class="spin"></span></div></div>`;
   if (!pole) { $("#acc-stats").innerHTML = '<div class="empty">Aucun pôle Résidence configuré.</div>'; return; }
-  const D = await donneesPole(pole.id, debutJ(du), finJ(au));
+  const [D] = await Promise.all([donneesPole(pole.id, debutJ(du), finJ(au)), blocLogementsOccupation().then(h => { const l = $("#acc-logs"); if (l) l.innerHTML = h; })]);
   const T = calculs(D), svc = k => T.svc[k] || 0;
   const z = $("#acc-stats"); if (!z) return;
   z.innerHTML = `
@@ -4933,6 +4935,15 @@ async function resTableauBord() {
     <div class="stat"><b class="money">${fcfa(svc("Bar"))}</b><span>Bar</span></div>
     <div class="stat"><b class="money">${fcfa(svc("Piscine"))}</b><span>Piscine</span></div>
     <div class="stat"><b class="money">${fcfa(svc("Restaurant"))}</b><span>Resto</span></div>`;
+}
+async function blocLogementsOccupation() {
+  const logs = S.espaces.filter(e => e.type === "logement" && !e.privatisation);
+  if (!logs.length) return '<div class="empty">Aucun logement configuré.</div>';
+  const occ = await q(sb.from("reservations").select("id,espace_id,statut,clients(nom)").eq("etablissement_id", S.etab.id).eq("statut", "en_cours"));
+  const resaDe = id => occ.find(r => r.espace_id === id);
+  return `<div class="card scroll"><table class="t"><thead><tr><th>Logement</th><th>Statut</th><th>Client</th></tr></thead><tbody>
+    ${logs.map(e => { const r = resaDe(e.id); return `<tr ${r ? `class="tap" data-act="resa" data-id="${r.id}"` : ""}><td>${esc(e.nom)}</td><td>${r ? '<span class="chip w">Occupé</span>' : '<span class="chip ok">Libre</span>'}</td><td>${r ? esc(r.clients?.nom || "") : ""}</td></tr>`; }).join("")}
+    </tbody></table></div>`;
 }
 document.addEventListener("change", e => {
   if (e.target.id === "acc-du" || e.target.id === "acc-au") { if (!e.target.value) return; S[e.target.id === "acc-du" ? "accDu" : "accAu"] = e.target.value; resTableauBord(); }
