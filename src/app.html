@@ -5206,6 +5206,10 @@ async function blocMainCouranteInstitut(pi) {
 document.addEventListener("change", e => {
   if (e.target.id === "mi-du" || e.target.id === "mi-au") { if (!e.target.value) return; S[e.target.id === "mi-du" ? "miDu" : "miAu"] = e.target.value; vVenteInstitut().catch(err => toast(err.message, true)); }
 });
+function perID() {
+  const du = S.idDu || lundi(today()), au = S.idAu || today();
+  return du <= au ? [du, au] : [au, du];
+}
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
   const [T, Ty] = await Promise.all([
@@ -5214,7 +5218,7 @@ async function blocInstitutAccueil(pi) {
   ]);
   const delta = T.solde - Ty.solde, bon = delta >= 0;
   const l = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
-  return `<div class="card synth"><dl class="kv">
+  const synth = `<div class="card synth"><dl class="kv">
       ${l(`Report au ${dateFr(today())}`, T.report)}
       ${l("Recettes du jour", T.rec)}
       ${T.app ? l("Apports en caisse", T.app) : ""}
@@ -5223,9 +5227,45 @@ async function blocInstitutAccueil(pi) {
       ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
       ${T.cot ? l("Cotisations (épargne)", T.cot, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
-      <div class="solde"><span>Solde du jour</span><span class="money">${fcfa(T.solde)}</span></div></div>
+      <div class="solde"><span>Total main courante (à jour)</span><span class="money">${fcfa(T.solde)}</span></div></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
+  const [du, au] = perID();
+  return `${synth}
+    <div class="sec">Performance et dépenses de la semaine</div>
+    <div class="duo"><label class="f">Du<input class="i" type="date" id="id-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="id-au" value="${au}" max="${today()}"></label></div>
+    ${await blocPerformanceInstitut(pi, du, au)}`;
 }
+function matriceInstitut(titre, jours, data) {
+  const ks = Object.keys(data);
+  if (!ks.length) return `<div class="sec">${titre}</div><div class="empty">Aucune donnée sur cette période.</div>`;
+  const totCol = jours.map(j => ks.reduce((t, k) => t + (data[k][j] || 0), 0));
+  const totGen = totCol.reduce((a, b) => a + b, 0);
+  return `<div class="sec">${titre}</div><div class="card scroll"><table class="t"><thead><tr><th></th>${jours.map(j => `<th>${jsem(j).slice(0, 3)}<br>${ddmm(j)}</th>`).join("")}<th>TOTAL</th></tr></thead>
+    <tbody>${ks.map(k => { const tot = jours.reduce((t, j) => t + (data[k][j] || 0), 0);
+      return `<tr><td>${esc(k)}</td>${jours.map(j => `<td class="money">${data[k][j] ? fcfa(data[k][j]) : "—"}</td>`).join("")}<td class="money"><b>${fcfa(tot)}</b></td></tr>`; }).join("")}
+    <tr class="tot"><td><b>TOTAL FCFA</b></td>${totCol.map(v => `<td class="money"><b>${fcfa(v)}</b></td>`).join("")}<td class="money"><b>${fcfa(totGen)}</b></td></tr></tbody></table></div>`;
+}
+async function blocPerformanceInstitut(pi, du, au) {
+  let D; try { D = await donneesMainCourante(du, au, pi.id); } catch (e) { return `<div class="empty">${esc(e.message)}</div>`; }
+  const jours = []; for (let j = du; j <= au; j = ajoutJours(j, 1)) jours.push(j);
+  const jr = ts => jourCompta(new Date(ts));
+  const nomsPresta = new Set(Object.values(D.ve).map(v => (v.prestataire || "").trim().toLowerCase()).filter(Boolean));
+  const empDe = m => (m.employe || "").trim() || (m.beneficiaire && nomsPresta.has(m.beneficiaire.trim().toLowerCase()) ? m.beneficiaire.trim() : "");
+  const depEmp = m => !!empDe(m);
+  const sortie = m => ["depense", "retrait", "versement_banque"].includes(m.type);
+  const perf = {};
+  D.pa.forEach(p => { const k = prestaDe(D.ve[p.vente_id]), j = jr(p.created_at);
+    (perf[k] ||= {})[j] = (perf[k][j] || 0) + p.montant * (p.sens || 1); });
+  const depE = {}; Object.keys(perf).forEach(k => depE[k] = {});
+  const depI = {};
+  D.mv.filter(sortie).forEach(m => { const j = jr(m.created_at);
+    if (depEmp(m)) { const k = Object.keys(perf).find(x => x.toLowerCase() === empDe(m).toLowerCase()) || empDe(m); (depE[k] ||= {})[j] = (depE[k][j] || 0) + m.montant; }
+    else { const k = m.type === "versement_banque" ? "Versement banque" : (m.categorie || m.libelle || "Divers").trim(); (depI[k] ||= {})[j] = (depI[k][j] || 0) + m.montant; } });
+  return `${matriceInstitut("Performance par employé", jours, perf)}${matriceInstitut("Dépenses par employé", jours, depE)}${matriceInstitut("Dépenses Institut", jours, depI)}`;
+}
+document.addEventListener("change", e => {
+  if (e.target.id === "id-du" || e.target.id === "id-au") { if (!e.target.value) return; S[e.target.id === "id-du" ? "idDu" : "idAu"] = e.target.value; instTableauBord().catch(err => toast(err.message, true)); }
+});
 
 /* ======== AFFICHAGE ORDINATEUR (responsive) ========
    Le CSS d'origine est pensé mobile (colonne centrée à 640px) : sur un
