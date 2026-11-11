@@ -4949,7 +4949,8 @@ async function blocPresence() {
   const pres = {}; pt.forEach(p => { (pres[p.membre_id] ||= {})[p.type] = p; });
   return `<div class="stats"><div class="stat"><b>${Object.values(pres).filter(p => p.arrivee).length}/${perso.length}</b><span>personnes présentes</span></div></div>
     <div class="card scroll"><table class="t"><thead><tr><th>Personne</th><th>Arrivée</th><th>Départ</th></tr></thead><tbody>
-      ${perso.map(m => { const p = pres[m.id] || {}; return `<tr><td>${esc(m.profils.nom_complet)}</td><td>${p.arrivee ? heure(p.arrivee.horodatage) + (p.arrivee.dans_perimetre === false ? " ⚠" : "") : '<span class="sub">absent</span>'}</td><td>${p.depart ? heure(p.depart.horodatage) : "—"}</td></tr>`; }).join("")}
+      ${perso.map(m => { const p = pres[m.id] || {}; const hors = p.arrivee?.dans_perimetre === false || p.depart?.dans_perimetre === false;
+        return `<tr><td>${esc(m.profils.nom_complet)}${hors ? " ⚠" : ""}</td><td>${p.arrivee ? heure(p.arrivee.horodatage) : '<span class="sub">absent</span>'}</td><td>${p.depart ? heure(p.depart.horodatage) : "—"}</td></tr>`; }).join("")}
     </tbody></table><p class="note">⚠ : pointage fait hors de la résidence.</p></div>`;
 }
 async function blocLogementsOccupation() {
