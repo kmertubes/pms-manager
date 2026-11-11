@@ -5118,7 +5118,7 @@ Object.assign(A, {
   },
   restab: b => { S.resTab = b.dataset.k; ecranResidenceAccueil().catch(e => toast(e.message, true)); },
   insttab: b => { S.instTab = b.dataset.k; ecranInstitutAccueil().catch(e => toast(e.message, true)); },
-  rapportjourinst: b => act(b, async () => { await genererRapport("pdg", today(), today(), b.dataset.id); toast("Rapport téléchargé"); }),
+  rapportjourinst: b => act(b, async () => { const [du, au] = perMI(); await genererRapport("pdg", du, au, b.dataset.id); toast("Rapport téléchargé"); }),
 });
 
 const _vTableau5 = vTableau3;
@@ -5168,27 +5168,44 @@ async function vVenteInstitut() {
       <div class="line">${chip(VST, v.statut)}${v.statut !== "annulee" && reste > 0 ? `<span class="chip w">À encaisser ${fcfa(reste)}</span>` : ""}</div></div>`; }).join("") || '<div class="empty">Aucune vente aujourd\'hui.</div>'}`;
   $("#main").insertAdjacentHTML("beforeend", await blocMainCouranteInstitut(pi));
 }
+function perMI() {
+  const du = S.miDu || today(), au = S.miAu || today();
+  return du <= au ? [du, au] : [au, du];
+}
 async function blocMainCouranteInstitut(pi) {
   if (!pi) return "";
-  const j = today();
-  let D; try { D = await donneesMainCourante(j, j, pi.id); } catch (e) { return `<div class="sec">Main courante du jour</div><div class="empty">${esc(e.message)}</div>`; }
+  const [du, au] = perMI();
+  let D; try { D = await donneesMainCourante(du, au, pi.id); } catch (e) {
+    return `<div class="sec">Main courante</div>
+      <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
+      <div class="empty">${esc(e.message)}</div>`;
+  }
+  const jours = []; for (let j = du; j <= au; j = ajoutJours(j, 1)) jours.push(j);
   const jr = ts => jourCompta(new Date(ts));
+  const sortie = m => ["depense", "retrait", "versement_banque"].includes(m.type);
   const lignes = [];
   let rep = D.report;
-  const rec = D.pa.filter(p => jr(p.created_at) === j);
-  const sortie = m => ["depense", "retrait", "versement_banque"].includes(m.type);
-  const dep = D.mv.filter(m => jr(m.created_at) === j && sortie(m)).reduce((t, m) => t + m.montant, 0);
-  const app = D.mv.filter(m => jr(m.created_at) === j && m.type === "apport").reduce((t, m) => t + m.montant, 0);
-  if (app) { lignes.push({ h: "—", rep, poste: "Apport en caisse", pr: "/", r: app, d: 0 }); rep += app; }
-  if (!rec.length && dep) lignes.push({ h: "—", rep, poste: "/", pr: "/", r: null, d: dep });
-  else rec.forEach((p, i) => { const v = D.ve[p.vente_id], m = p.montant * (p.sens || 1), d = i === rec.length - 1 ? dep : 0;
-    lignes.push({ h: heure(p.created_at), rep, poste: poste(v), pr: prestaDe(v), r: m, d }); rep += m - d; });
-  const rows = lignes.map(l => `<tr><td>${l.h}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${fcfa(l.rep)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
-  return `<div class="sec">Main courante du jour</div>
-    <div class="card scroll"><table class="t"><thead><tr><th>Heure</th><th>Poste</th><th>Prestataire</th><th>Report</th><th>Recettes</th><th>Dépenses</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6" class="empty">Aucun mouvement aujourd\'hui.</td></tr>'}</tbody></table></div>
-    ${ecrit() ? `<button class="btn full ghost" data-act="rapportjourinst" data-id="${pi.id}">📄 Générer le rapport de la journée (PDF)</button>` : ""}`;
+  for (const j of jours) {
+    const rec = D.pa.filter(p => jr(p.created_at) === j);
+    const dep = D.mv.filter(m => jr(m.created_at) === j && sortie(m)).reduce((t, m) => t + m.montant, 0);
+    const app = D.mv.filter(m => jr(m.created_at) === j && m.type === "apport").reduce((t, m) => t + m.montant, 0);
+    if (app) { lignes.push({ j, h: "—", rep, poste: "Apport en caisse", pr: "/", r: app, d: 0 }); rep += app; }
+    if (!rec.length && !dep) continue;
+    if (!rec.length) { lignes.push({ j, h: "—", rep, poste: "/", pr: "/", r: null, d: dep }); rep -= dep; continue; }
+    rec.forEach((p, i) => { const v = D.ve[p.vente_id], m = p.montant * (p.sens || 1), d = i === rec.length - 1 ? dep : 0;
+      lignes.push({ j, h: heure(p.created_at), rep, poste: poste(v), pr: prestaDe(v), r: m, d }); rep += m - d; });
+  }
+  const multi = jours.length > 1;
+  const rows = lignes.map(l => `<tr>${multi ? `<td>${ddmm(l.j)}</td>` : ""}<td>${l.h}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${fcfa(l.rep)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
+  return `<div class="sec">Main courante</div>
+    <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
+    <div class="card scroll"><table class="t"><thead><tr>${multi ? "<th>Date</th>" : ""}<th>Heure</th><th>Poste</th><th>Prestataire</th><th>Report</th><th>Recettes</th><th>Dépenses</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="${multi ? 7 : 6}" class="empty">Aucun mouvement sur cette période.</td></tr>`}</tbody></table></div>
+    ${ecrit() ? `<button class="btn full ghost" data-act="rapportjourinst" data-id="${pi.id}">📄 Générer le rapport de cette période (PDF)</button>` : ""}`;
 }
+document.addEventListener("change", e => {
+  if (e.target.id === "mi-du" || e.target.id === "mi-au") { if (!e.target.value) return; S[e.target.id === "mi-du" ? "miDu" : "miAu"] = e.target.value; vVenteInstitut().catch(err => toast(err.message, true)); }
+});
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
   const [T, Ty] = await Promise.all([
