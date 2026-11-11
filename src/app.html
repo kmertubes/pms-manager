@@ -4851,16 +4851,26 @@ function perAcc() {
   return du <= au ? [du, au] : [au, du];
 }
 async function ecranResidenceAccueil() {
+  S.resTab = S.resTab || "tableau";
+  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button><button class="iconbtn" data-act="logout">Quitter</button></div></header>
+    <main class="wrap">
+      <div class="seg">
+        <button data-act="restab" data-k="tableau" class="${S.resTab === "tableau" ? "on" : ""}">Tableau de bord</button>
+        <button data-act="restab" data-k="reservation" class="${S.resTab === "reservation" ? "on" : ""}">Réservation Hébergement</button>
+      </div>
+      <div id="main"></div>
+    </main>`;
+  if (S.resTab === "reservation") { await vResa(); return; }
+  await resTableauBord();
+}
+async function resTableauBord() {
   const pole = poleResidence();
   const [du, au] = perAcc();
-  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button><button class="iconbtn" data-act="logout">Quitter</button></div></header>
-    <main class="wrap" id="main">
-      <div class="sec">Tableau de bord</div>
-      <div class="duo"><label class="f">Du<input class="i" type="date" id="acc-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="acc-au" value="${au}" max="${today()}"></label></div>
-      <p class="sub">${du === au ? esc(dateFr(du)) : `du ${esc(dateFr(du))} au ${esc(dateFr(au))}`}</p>
-      <div class="sec">Actuellement</div>
-      <div class="stats" id="acc-stats"><div class="empty"><span class="spin"></span></div></div>
-    </main>`;
+  $("#main").innerHTML = `
+    <div class="duo"><label class="f">Du<input class="i" type="date" id="acc-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="acc-au" value="${au}" max="${today()}"></label></div>
+    <p class="sub">${du === au ? esc(dateFr(du)) : `du ${esc(dateFr(du))} au ${esc(dateFr(au))}`}</p>
+    <div class="sec">Actuellement</div>
+    <div class="stats" id="acc-stats"><div class="empty"><span class="spin"></span></div></div>`;
   if (!pole) { $("#acc-stats").innerHTML = '<div class="empty">Aucun pôle Résidence configuré.</div>'; return; }
   const D = await donneesPole(pole.id, debutJ(du), finJ(au));
   const T = calculs(D), svc = k => T.svc[k] || 0;
@@ -4872,7 +4882,7 @@ async function ecranResidenceAccueil() {
     <div class="stat"><b class="money">${fcfa(svc("Restaurant"))}</b><span>Resto</span></div>`;
 }
 document.addEventListener("change", e => {
-  if (e.target.id === "acc-du" || e.target.id === "acc-au") { if (!e.target.value) return; S[e.target.id === "acc-du" ? "accDu" : "accAu"] = e.target.value; ecranResidenceAccueil(); }
+  if (e.target.id === "acc-du" || e.target.id === "acc-au") { if (!e.target.value) return; S[e.target.id === "acc-du" ? "accDu" : "accAu"] = e.target.value; resTableauBord(); }
 });
 Object.assign(A, {
   portail: b => {
@@ -4884,6 +4894,7 @@ Object.assign(A, {
     else { S.poleTab = ""; S.tab = "finances"; S.fin = "caisseresidence"; }
     rendre();
   },
+  restab: b => { S.resTab = b.dataset.k; ecranResidenceAccueil().catch(e => toast(e.message, true)); },
 });
 
 const _vTableau5 = vTableau3;
