@@ -1001,8 +1001,30 @@ async function ouvrirVente(id) {
     ${ecrit() && cuisine && suivant && v.statut !== "annulee" ? `<button class="btn full ghost" data-act="vstatut" data-id="${id}" data-s="${suivant[0]}">Passer à : ${suivant[1]}</button>` : ""}
     ${v.reservation_id && reste > 0 ? '<p class="note">Cette consommation est sur la note du séjour. Encaissez-la ici quand le client paie.</p>' : ""}
     ${ecrit() && reste > 0 && v.statut !== "annulee" ? `<div class="sec">Encaisser</div>${champsPaiement("pv", reste)}<button class="btn full ok" data-act="payvente" data-id="${id}">Encaisser ${fcfa(reste)}</button>` : ""}
-    ${(dir() || pdg()) && v.statut !== "annulee" ? `<button class="btn sm ghost" data-act="corrdatevente" data-id="${id}" data-date="${jourCompta(new Date(v.created_at))}">Corriger la date</button>` : ""}
+    ${(dir() || pdg()) && v.statut !== "annulee" ? (estPoleInst(c?.pole_id) ? `<button class="btn sm ghost" data-act="modvente" data-id="${id}">Modifier la vente</button>` : `<button class="btn sm ghost" data-act="corrdatevente" data-id="${id}" data-date="${jourCompta(new Date(v.created_at))}">Corriger la date</button>`) : ""}
     ${dir() && v.statut !== "annulee" ? `<button class="btn sm ghost" data-act="annulervente" data-id="${id}">Annuler cette vente</button>` : ""}`;
+}
+/* ---------- Institut : modifier une vente déjà saisie (date, quantité, prix) ---------- */
+async function ouvrirModifVente(id) {
+  openSheet("Modifier la vente", spinner);
+  const [v, li] = await Promise.all([
+    q(sb.from("ventes").select("created_at").eq("id", id).single()),
+    q(sb.from("vente_lignes").select("id,quantite,prix_unitaire,produits(nom),formules(nom)").eq("vente_id", id)),
+  ]);
+  const date = jourCompta(new Date(v.created_at));
+  $("#sheet .panel").innerHTML = `<div class="head"><h2>Modifier la vente</h2><button class="x" data-act="close" aria-label="Fermer">×</button></div>
+    <p class="note">Corrige la prestation, la quantité, le prix ou le jour de cette vente dans la main courante et les rapports. Les paiements déjà encaissés ne sont pas recalculés automatiquement.</p>
+    <div class="card">${li.map(l => `<div class="duo" data-vl="${l.id}"><label class="f">${esc(l.produits?.nom || "Prestation")}${l.formules && l.formules.nom !== "Portion" ? " · " + esc(l.formules.nom) : ""}<input class="i" type="number" inputmode="decimal" step="any" min="0.01" data-k="q" value="${nb(l.quantite)}" placeholder="Quantité"></label>
+      <label class="f">Prix unitaire (FCFA)<input class="i" type="number" inputmode="numeric" min="0" data-k="p" value="${Math.round(l.prix_unitaire)}"></label></div>`).join("")}
+      <div class="line"><b class="grow">Nouveau total</b><b class="money" id="mv-t">${fcfa(li.reduce((t, l) => t + l.quantite * l.prix_unitaire, 0))}</b></div></div>
+    <label class="f">Date réelle de la vente<input class="i" type="date" id="mv-d" value="${date}" max="${today()}"></label>
+    ${motif("mv-m", "Ex. mauvais prix saisi, erreur de quantité")}
+    <button class="btn full" data-act="domodvente" data-id="${id}">Enregistrer</button>`;
+  const maj = () => { let t = 0; document.querySelectorAll("[data-vl]").forEach(r => t += (+r.querySelector('[data-k="q"]').value || 0) * (+r.querySelector('[data-k="p"]').value || 0)); $("#mv-t").textContent = fcfa(t); };
+  document.querySelectorAll("[data-vl] input").forEach(i => i.oninput = maj);
+}
+function lignesModifVente() {
+  return [...document.querySelectorAll("[data-vl]")].map(r => ({ id: r.dataset.vl, quantite: +r.querySelector('[data-k="q"]').value || 0, prix_unitaire: Math.round(+r.querySelector('[data-k="p"]').value || 0) }));
 }
 
 /* ---------- Cuisine ---------- */
@@ -2364,6 +2386,15 @@ const A6 = {
     if (!$("#cd-d").value) throw new Error("Choisissez une date");
     await rpc("corriger_date_vente", { p_vente: b.dataset.id, p_date: $("#cd-d").value, p_motif: lireMotif("cd-m") });
     closeSheet(); toast("Date de la vente corrigée"); rendre();
+  }),
+  modvente: b => ouvrirModifVente(b.dataset.id).catch(e => toast(e.message, true)),
+  domodvente: b => act(b, async () => {
+    const lignes = lignesModifVente();
+    if (!lignes.length) throw new Error("Aucune ligne à modifier");
+    if (lignes.some(l => l.quantite <= 0)) throw new Error("La quantité doit être supérieure à 0");
+    if (!$("#mv-d").value) throw new Error("Choisissez une date");
+    await rpc("modifier_vente_institut", { p_vente: b.dataset.id, p_lignes: lignes, p_date: $("#mv-d").value, p_motif: lireMotif("mv-m") });
+    closeSheet(); toast("Vente modifiée"); rendre();
   }),
   credit: b => openSheet("Vente à crédit", `<p>Reste à payer : <b>${fcfa(b.dataset.r)}</b></p>
     <div class="duo"><label class="f">Nom du client<input class="i" id="cr-n"></label><label class="f">Téléphone<input class="i" id="cr-t" type="tel" inputmode="tel"></label></div>
