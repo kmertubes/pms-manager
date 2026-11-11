@@ -5189,18 +5189,24 @@ async function blocMainCouranteInstitut(pi) {
     const rec = D.pa.filter(p => jr(p.created_at) === j);
     const dep = D.mv.filter(m => jr(m.created_at) === j && sortie(m)).reduce((t, m) => t + m.montant, 0);
     const app = D.mv.filter(m => jr(m.created_at) === j && m.type === "apport").reduce((t, m) => t + m.montant, 0);
-    if (app) { lignes.push({ j, h: "—", rep, poste: "Apport en caisse", pr: "/", r: app, d: 0 }); rep += app; }
+    if (app) { lignes.push({ j, rep, poste: "Apport en caisse", pr: "/", r: app, d: 0 }); rep += app; }
     if (!rec.length && !dep) continue;
-    if (!rec.length) { lignes.push({ j, h: "—", rep, poste: "/", pr: "/", r: null, d: dep }); rep -= dep; continue; }
+    if (!rec.length) { lignes.push({ j, rep, poste: "/", pr: "/", r: null, d: dep }); rep -= dep; continue; }
     rec.forEach((p, i) => { const v = D.ve[p.vente_id], m = p.montant * (p.sens || 1), d = i === rec.length - 1 ? dep : 0;
-      lignes.push({ j, h: heure(p.created_at), rep, poste: poste(v), pr: prestaDe(v), r: m, d }); rep += m - d; });
+      lignes.push({ j, rep, poste: poste(v), pr: prestaDe(v), r: m, d }); rep += m - d; });
   }
-  const multi = jours.length > 1;
-  const rows = lignes.map(l => `<tr>${multi ? `<td>${ddmm(l.j)}</td>` : ""}<td>${l.h}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${fcfa(l.rep)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
+  const recT = D.pa.reduce((t, p) => t + p.montant * (p.sens || 1), 0);
+  const appT = D.mv.filter(m => m.type === "apport").reduce((t, m) => t + m.montant, 0);
+  const depT = D.mv.filter(sortie).reduce((t, m) => t + m.montant, 0);
+  const solde = D.report + recT + appT - depT;
+  const rows = lignes.map(l => `<tr><td>${ddmmyyyy(l.j)}</td><td class="money">${fcfa(l.rep)}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
   return `<div class="sec">Main courante</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
-    <div class="card scroll"><table class="t"><thead><tr>${multi ? "<th>Date</th>" : ""}<th>Heure</th><th>Poste</th><th>Prestataire</th><th>Report</th><th>Recettes</th><th>Dépenses</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="${multi ? 7 : 6}" class="empty">Aucun mouvement sur cette période.</td></tr>`}</tbody></table></div>
+    <div class="card scroll"><table class="t"><thead><tr><th>Dates</th><th>Report de caisse</th><th>Poste</th><th>Prestataire</th><th>Recettes</th><th>Dépenses</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="empty">Aucun mouvement sur cette période.</td></tr>'}
+    <tr class="tot"><td><b>TOTAL</b></td><td></td><td></td><td></td><td class="money"><b>${fcfa(recT + appT)}</b></td><td class="money"><b>${fcfa(depT)}</b></td></tr>
+    </tbody></table></div>
+    <div class="line"><b>TOTAL MAIN COURANTE</b><b class="money">${fcfa(solde)}</b></div>
     ${ecrit() ? `<button class="btn full ghost" data-act="rapportjourinst" data-id="${pi.id}">📄 Générer le rapport de cette période (PDF)</button>` : ""}`;
 }
 document.addEventListener("change", e => {
