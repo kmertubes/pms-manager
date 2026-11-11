@@ -4859,11 +4859,13 @@ async function ecranResidenceAccueil() {
         <button data-act="restab" data-k="tableau" class="${S.resTab === "tableau" ? "on" : ""}">Tableau de bord</button>
         <button data-act="restab" data-k="reservation" class="${S.resTab === "reservation" ? "on" : ""}">Hébergement</button>
         <button data-act="restab" data-k="piscine" class="${S.resTab === "piscine" ? "on" : ""}">Piscine</button>
+        <button data-act="restab" data-k="restaurant" class="${S.resTab === "restaurant" ? "on" : ""}">Restaurant</button>
       </div>
       <div id="main"></div>
     </main>`;
   if (S.resTab === "reservation") { await vResa(); return; }
   if (S.resTab === "piscine") { await vPiscineRes(); return; }
+  if (S.resTab === "restaurant") { await vRestaurantRes(); return; }
   await resTableauBord();
 }
 async function vPiscineRes() {
@@ -4873,6 +4875,46 @@ async function vPiscineRes() {
   S.caisseSel = c.id;
   await vCaisse();
   const seg = $("#main .seg"); if (seg) seg.remove();
+}
+async function vRestaurantRes() {
+  const pole = poleResidence();
+  const cs = S.caisses.filter(c => ["restaurant", "restaurant_mobile"].includes(c.type) && voitPole(c.pole_id) && (!pole || c.pole_id === pole.id));
+  if (!cs.length) { $("#main").innerHTML = '<div class="empty">Aucune caisse Restaurant configurée.</div>'; return; }
+  if (!cs.some(c => c.id === S.caisseSel)) S.caisseSel = cs[0].id;
+  const c = caisse(S.caisseSel), depuis = aDouala(today()).toISOString(), ids = cs.map(x => x.id);
+  const [ve, enc, veCuis, route] = await Promise.all([
+    q(sb.from("ventes").select("id,total,statut,lieu,created_at,vendeur,reservation_id,vente_lignes(quantite,produits(nom))").eq("caisse_id", c.id).gte("created_at", depuis).order("created_at", { ascending: true })),
+    q(sb.from("paiements").select("montant,sens,moyen,vente_id").eq("caisse_id", c.id).eq("annule", false).gte("created_at", depuis)).then(signe),
+    q(sb.from("ventes").select("id,caisse_id,statut,lieu,created_at,vendeur,vente_lignes(quantite,produits(nom)),livraisons(id,quartier,depart_le)").in("caisse_id", ids).in("statut", ["ouverte", "en_preparation", "prete"]).order("created_at")),
+    q(sb.from("livraisons").select("id,vente_id,quartier,livreur,depart_le").eq("etablissement_id", S.etab.id).not("depart_le", "is", null).is("retour_le", null)),
+  ]);
+  const plats = S.produits.filter(p => ids.includes(p.caisse_id));
+  const paye = id => enc.filter(p => p.vente_id === id).reduce((t, p) => t + p.montant, 0);
+  const total = enc.reduce((t, p) => t + p.montant, 0);
+  const minDepuis = ts => Math.round((Date.now() - new Date(ts)) / 60000);
+  $("#main").innerHTML = `
+    <div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>
+    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
+    ${ecrit() ? `<button class="btn full" data-act="newvente">＋ ${c.type === "restaurant_mobile" ? "Nouvelle commande à livrer" : "Nouvelle vente"}</button>` : ""}
+    <div class="sec">Commandes en cours (${veCuis.length})</div>
+    ${veCuis.map(v => { const lv = Array.isArray(v.livraisons) ? v.livraisons[0] : v.livraisons; const m = minDepuis(v.created_at);
+      const suivant = { ouverte: ["en_preparation", "Je commence"], en_preparation: ["prete", "C'est prêt"], prete: lv ? null : ["servie", "Servie"] }[v.statut];
+      return `<div class="card"><div class="line"><div class="grow"><div class="title">${v.vente_lignes.map(l => `${nb(l.quantite)} × ${esc(l.produits.nom)}`).join("<br>")}</div>
+        <div class="sub">${lv ? "🛵 Livraison" + (lv.quartier ? " · " + esc(lv.quartier) : "") : esc(v.lieu || caisse(v.caisse_id)?.nom || "")} · reçue à ${heure(v.created_at)}</div></div>
+        <span class="chip ${m > 30 ? "bad" : m > 15 ? "w" : "n"}">${m} min</span></div>
+        <div class="line">${chip(VST, v.statut)}<span class="grow"></span>
+        ${ecrit() && suivant ? `<button class="btn sm" data-act="vstatut" data-id="${v.id}" data-s="${suivant[0]}" data-reste="1">${suivant[1]}</button>` : ""}
+        ${ecrit() && lv && v.statut === "prete" && !lv.depart_le ? `<button class="btn sm" data-act="livdep" data-id="${lv.id}" data-v="${v.id}" data-reste="1">Le livreur part</button>` : ""}</div></div>`; }).join("") || '<div class="empty">Aucune commande en attente.</div>'}
+    ${route.length ? `<div class="sec">Livreurs en route (${route.length})</div>` + route.map(l => `<div class="card"><div class="line"><div class="grow"><div class="title">${l.livreur ? esc(nomMembre(l.livreur)) : "Moto-taxi"} · ${esc(l.quartier || "")}</div><div class="sub">Parti à ${heure(l.depart_le)}, absent depuis ${minDepuis(l.depart_le)} min</div></div>
+      ${ecrit() ? `<button class="btn sm" data-act="livret" data-id="${l.id}" data-v="${l.vente_id}" data-reste="1">Revenu</button>` : ""}</div></div>`).join("") : ""}
+    <div class="sec">Carte du jour</div>
+    <div class="card">${plats.map(p => `<label class="check"><input type="checkbox" data-dispo="${p.id}" ${p.disponible ? "checked" : ""} ${dir() ? "" : "disabled"}><span class="grow">${esc(p.nom)} <span class="sub">${esc(caisse(p.caisse_id)?.nom || "")}</span></span></label>`).join("") || '<div class="sub">Aucun plat. Ajoutez-les dans le Catalogue.</div>'}
+    ${dir() ? '<p class="note">Décochez un plat quand il est épuisé : il ne pourra plus être commandé.</p>' : ""}</div>
+    <div class="sec">Ventes du jour</div>
+    ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
+      <div class="title">${esc(v.vente_lignes.map(l => (Number(l.quantite) !== 1 ? nb(l.quantite) + " × " : "") + l.produits.nom).join(", ") || "Vente")}</div>
+      <div class="sub">${heure(v.created_at)}${v.lieu ? " · " + esc(v.lieu) : ""} · ${esc(nomMembre(v.vendeur))}</div></div><b class="money">${fcfa(v.total)}</b></div>
+      <div class="line">${chip(VST, v.statut)}${v.statut !== "annulee" && reste > 0 ? (v.reservation_id ? '<span class="chip i">Sur la note du séjour</span>' : `<span class="chip w">À encaisser ${fcfa(reste)}</span>`) : ""}</div></div>`; }).join("") || '<div class="empty">Aucune vente aujourd\'hui.</div>'}`;
 }
 async function resTableauBord() {
   const pole = poleResidence();
