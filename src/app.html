@@ -3455,6 +3455,19 @@ vResa = async () => {
   await _vResa3();
   $("#main").insertAdjacentHTML("beforeend", `<button class="btn full ghost" data-act="histo">Historique des séjours (terminés, payés, annulés)</button>`);
 };
+const _vResa4 = vResa;
+vResa = async () => {
+  await _vResa4();
+  if (S.hist?.on) return;
+  const rs = await q(sb.from("reservations").select("id,espace_id,debut,fin,prix_total,clients(nom,telephone)")
+    .eq("etablissement_id", S.etab.id).eq("statut", "confirmee").order("debut"));
+  const sol = rs.length ? await q(sb.from("v_reservations_soldes").select("id,acomptes,total_paye,reste_a_payer").in("id", rs.map(r => r.id))) : [];
+  const so = id => sol.find(s => s.id === id) || {};
+  $("#main").insertAdjacentHTML("beforeend", `<div class="sec">Acompte reçu, en attente d'arrivée (${rs.length})</div>
+    ${rs.map(r => { const s = so(r.id); return `<div class="card tap" data-act="resa" data-id="${r.id}"><div class="line"><div class="grow"><div class="title">${esc(nomEspace(r.espace_id))} · ${esc(r.clients?.nom || "Client")}</div>
+      <div class="sub">${esc(quand(r.debut))} → ${esc(quand(r.fin))}</div></div>${chip(RST, r.statut)}</div>
+      <div class="line"><span class="sub grow">Acompte ${fcfa(s.acomptes)} · reste ${fcfa(s.reste_a_payer)}</span></div></div>`; }).join("") || '<div class="empty">Aucune réservation en attente d\'arrivée.</div>'}`);
+};
 async function vHistorique() {
   const h = S.hist;
   const rs = await q(sb.from("reservations").select("id,espace_id,debut,fin,depart_reel,statut,prix_total,origine,clients(nom,telephone)")
