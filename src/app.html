@@ -4858,11 +4858,21 @@ async function ecranResidenceAccueil() {
       <div class="seg">
         <button data-act="restab" data-k="tableau" class="${S.resTab === "tableau" ? "on" : ""}">Tableau de bord</button>
         <button data-act="restab" data-k="reservation" class="${S.resTab === "reservation" ? "on" : ""}">Hébergement</button>
+        <button data-act="restab" data-k="piscine" class="${S.resTab === "piscine" ? "on" : ""}">Piscine</button>
       </div>
       <div id="main"></div>
     </main>`;
   if (S.resTab === "reservation") { await vResa(); return; }
+  if (S.resTab === "piscine") { await vPiscineRes(); return; }
   await resTableauBord();
+}
+async function vPiscineRes() {
+  const pole = poleResidence();
+  const c = S.caisses.find(x => x.type === "piscine" && voitPole(x.pole_id) && (!pole || x.pole_id === pole.id));
+  if (!c) { $("#main").innerHTML = '<div class="empty">Aucune caisse Piscine configurée.</div>'; return; }
+  S.caisseSel = c.id;
+  await vCaisse();
+  const seg = $("#main .seg"); if (seg) seg.remove();
 }
 async function resTableauBord() {
   const pole = poleResidence();
