@@ -4942,12 +4942,14 @@ async function ecranResidenceAccueil() {
         <button data-act="restab" data-k="tableau" class="${S.resTab === "tableau" ? "on" : ""}">Tableau de bord</button>
         <button data-act="restab" data-k="reservation" class="${S.resTab === "reservation" ? "on" : ""}">Hébergement</button>
         <button data-act="restab" data-k="piscine" class="${S.resTab === "piscine" ? "on" : ""}">Piscine</button>
+        <button data-act="restab" data-k="bar" class="${S.resTab === "bar" ? "on" : ""}">Bar</button>
         <button data-act="restab" data-k="restaurant" class="${S.resTab === "restaurant" ? "on" : ""}">Restaurant</button>
       </div>
       <div id="main"></div>
     </main>`;
   if (S.resTab === "reservation") { await vResa(); return; }
   if (S.resTab === "piscine") { await vPiscineRes(); return; }
+  if (S.resTab === "bar") { await vBarRes(); return; }
   if (S.resTab === "restaurant") { await vRestaurantRes(); return; }
   await resTableauBord();
 }
@@ -4955,6 +4957,14 @@ async function vPiscineRes() {
   const pole = poleResidence();
   const c = S.caisses.find(x => x.type === "piscine" && voitPole(x.pole_id) && (!pole || x.pole_id === pole.id));
   if (!c) { $("#main").innerHTML = '<div class="empty">Aucune caisse Piscine configurée.</div>'; return; }
+  S.caisseSel = c.id;
+  await vCaisse();
+  const seg = $("#main .seg"); if (seg) seg.remove();
+}
+async function vBarRes() {
+  const pole = poleResidence();
+  const c = S.caisses.find(x => x.type === "bar" && voitPole(x.pole_id) && (!pole || x.pole_id === pole.id));
+  if (!c) { $("#main").innerHTML = '<div class="empty">Aucune caisse Bar configurée.</div>'; return; }
   S.caisseSel = c.id;
   await vCaisse();
   const seg = $("#main .seg"); if (seg) seg.remove();
