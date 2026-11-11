@@ -3529,6 +3529,7 @@ document.addEventListener("change", e => {
   if (e.target.id === "tb-du" || e.target.id === "tb-au") { if (!e.target.value) return; S[e.target.id === "tb-du" ? "perDu" : "perAu"] = e.target.value; rendre(); }
   if (e.target.id === "hi-du" || e.target.id === "hi-au") { if (!e.target.value) return; S.hist[e.target.id === "hi-du" ? "du" : "au"] = e.target.value; rendre(); }
   if (e.target.id === "hi-st") { S.hist.st = e.target.value; rendre(); }
+  if (e.target.id === "mc-du" || e.target.id === "mc-au") { if (!e.target.value) return; S[e.target.id === "mc-du" ? "mcDu" : "mcAu"] = e.target.value; rendre(); }
 });
 
 /* ---------- Historique des séjours ---------- */
@@ -3550,6 +3551,37 @@ vResa = async () => {
     ${rs.map(r => { const s = so(r.id); return `<div class="card tap" data-act="resa" data-id="${r.id}"><div class="line"><div class="grow"><div class="title">${esc(nomEspace(r.espace_id))} · ${esc(r.clients?.nom || "Client")}</div>
       <div class="sub">${esc(quand(r.debut))} → ${esc(quand(r.fin))}</div></div>${chip(RST, r.statut)}</div>
       <div class="line"><span class="sub grow">Acompte ${fcfa(s.acomptes)} · reste ${fcfa(s.reste_a_payer)}</span></div></div>`; }).join("") || '<div class="empty">Aucune réservation en attente d\'arrivée.</div>'}`);
+};
+function perMC() {
+  const du = S.mcDu || today(), au = S.mcAu || today();
+  return du <= au ? [du, au] : [au, du];
+}
+async function blocMainCouranteHebergement() {
+  const [du, au] = perMC();
+  const pole = poleResidence();
+  const idsHeb = pole ? S.caisses.filter(c => c.type === "hebergement" && c.pole_id === pole.id).map(c => c.id) : [];
+  let rows = "";
+  if (idsHeb.length) {
+    const pa = await q(sb.from("paiements").select("montant,sens,moyen,created_at,reservations(espace_id,clients(nom))")
+      .in("caisse_id", idsHeb).eq("annule", false).not("reservation_id", "is", null)
+      .gte("created_at", debutJ(du).toISOString()).lt("created_at", finJ(au).toISOString()).order("created_at", { ascending: true }));
+    let report = 0;
+    rows = pa.map(p => {
+      const montant = p.montant * (p.sens || 1); report += montant;
+      const r = p.reservations;
+      return `<tr><td>${esc(quand(p.created_at))}</td><td>${esc(r?.clients?.nom || "Client")}${r?.espace_id ? " · " + esc(nomEspace(r.espace_id)) : ""}</td><td>${esc(MOYEN[p.moyen] || p.moyen)}</td><td class="money">${fcfa(montant)}</td><td class="money"><b>${fcfa(report)}</b></td></tr>`;
+    }).join("");
+  }
+  return `<div class="sec">Main courante</div>
+    <div class="duo"><label class="f">Du<input class="i" type="date" id="mc-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mc-au" value="${au}" max="${today()}"></label></div>
+    <div class="card scroll"><table class="t"><thead><tr><th>Date</th><th>Libellé</th><th>Moyen</th><th>Montant</th><th>Report</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" class="empty">Aucun encaissement sur cette période.</td></tr>'}</tbody></table></div>`;
+}
+const _vResa5 = vResa;
+vResa = async () => {
+  await _vResa5();
+  if (S.hist?.on) return;
+  $("#main").insertAdjacentHTML("beforeend", await blocMainCouranteHebergement());
 };
 async function vHistorique() {
   const h = S.hist;
