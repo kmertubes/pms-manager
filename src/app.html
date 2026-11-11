@@ -5284,11 +5284,22 @@ document.head.insertAdjacentHTML("beforeend", `<style>
   .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
   .duo{grid-template-columns:repeat(2,minmax(0,260px));gap:16px}
   .card{padding:18px}
+  nav.tabs{scrollbar-width:thin}
+  nav.tabs::-webkit-scrollbar{display:block;height:6px}
+  nav.tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
 }
 @media (min-width:1200px){
   .wrap{max-width:1320px}
 }
 </style>`);
+/* Sur ordinateur, la molette ne défile que verticalement par défaut : la
+   barre d'onglets, qui déborde horizontalement, devenait alors invisible
+   au-delà de la largeur de l'écran (ex. le bouton "Personnel"). On
+   convertit le défilement vertical en défilement horizontal sur la barre. */
+document.addEventListener("wheel", e => {
+  const t = e.target.closest("nav.tabs");
+  if (t && t.scrollWidth > t.clientWidth) { t.scrollLeft += e.deltaY; e.preventDefault(); }
+}, { passive: false });
 </script>
 </body>
 </html>
