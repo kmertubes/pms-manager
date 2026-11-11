@@ -928,6 +928,20 @@ async function vCaisse() {
       <div class="sub">${heure(v.created_at)}${v.lieu ? " · " + esc(v.lieu) : ""} · ${esc(nomMembre(v.vendeur))}</div></div><b class="money">${fcfa(v.total)}</b></div>
       <div class="line">${chip(VST, v.statut)}${v.statut !== "annulee" && reste > 0 ? (v.reservation_id ? '<span class="chip i">Sur la note du séjour</span>' : `<span class="chip w">À encaisser ${fcfa(reste)}</span>`) : ""}</div></div>`; }).join("") || '<div class="empty">Aucune vente aujourd\'hui.</div>'}`;
 }
+async function blocMainCourante(c) {
+  const depuis = aDouala(today()).toISOString();
+  const ve = await q(sb.from("ventes").select("created_at,statut,vente_lignes(quantite,prix_unitaire,produits(nom))").eq("caisse_id", c.id).neq("statut", "annulee").gte("created_at", depuis).order("created_at", { ascending: true }));
+  const lignes = [];
+  ve.forEach(v => (v.vente_lignes || []).forEach(l => lignes.push({ date: v.created_at, nom: l.produits?.nom || "Vente", qte: Number(l.quantite) || 1, prix: Number(l.prix_unitaire) || 0 })));
+  let report = 0;
+  const rows = lignes.map(l => {
+    const montant = l.qte * l.prix; report += montant;
+    return `<tr><td>${heure(l.date)}</td><td>${esc(l.nom)}${l.qte !== 1 ? ` ×${nb(l.qte)}` : ""}</td><td class="money">${fcfa(l.prix)}</td><td class="money">${fcfa(montant)}</td><td class="money"><b>${fcfa(report)}</b></td></tr>`;
+  }).join("");
+  return `<div class="sec">Main courante</div>
+    <div class="card scroll"><table class="t"><thead><tr><th>Heure</th><th>Libellé</th><th>Prix</th><th>Montant</th><th>Report</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="5" class="empty">Aucune vente aujourd\'hui.</td></tr>'}</tbody></table></div>`;
+}
 async function feuilleVente() {
   await chargerStock();
   const c = caisse(S.caisseSel), mob = c.type === "restaurant_mobile";
@@ -4960,6 +4974,7 @@ async function vPiscineRes() {
   S.caisseSel = c.id;
   await vCaisse();
   const seg = $("#main .seg"); if (seg) seg.remove();
+  $("#main").insertAdjacentHTML("beforeend", await blocMainCourante(c));
 }
 async function vBarRes() {
   const pole = poleResidence();
@@ -4968,6 +4983,7 @@ async function vBarRes() {
   S.caisseSel = c.id;
   await vCaisse();
   const seg = $("#main .seg"); if (seg) seg.remove();
+  $("#main").insertAdjacentHTML("beforeend", await blocMainCourante(c));
 }
 async function vRestaurantRes() {
   const pole = poleResidence();
