@@ -5260,6 +5260,11 @@ async function blocMainCouranteInstitut(pi) {
   const depT = D.mv.filter(sortie).reduce((t, m) => t + m.montant, 0);
   const solde = D.report + recT + appT - depT;
   const rows = lignes.map(l => `<tr${l.venteId ? ` class="tap" data-act="vente" data-id="${l.venteId}"` : ""}><td>${ddmmyyyy(l.j)}</td><td class="money">${fcfa(l.rep)}</td><td>${esc(l.poste)}</td><td>${esc(l.pr)}</td><td class="money">${l.r === null ? "—" : fcfa(l.r)}</td><td class="money">${l.d ? fcfa(l.d) : "—"}</td></tr>`).join("");
+  const deps = D.mv.filter(sortie).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const depsHtml = deps.length ? `<div class="sec">Détail des dépenses</div>
+    <div class="card">${deps.map(m => `<div class="line"><div class="grow"><div class="title">${esc(MVC[m.type] || m.type)}${m.categorie ? " · " + esc(m.categorie) : ""}</div>
+      <div class="sub">${ddmmyyyy(jourCompta(new Date(m.created_at)))} · ${heure(m.created_at)}${m.libelle ? " · " + esc(m.libelle) : ""}${m.employe ? " · " + esc(m.employe) : ""}</div></div><b class="money">${fcfa(m.montant)}</b></div>
+      ${dir() ? `<div class="line"><span class="grow"></span><button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle || "")}" data-date="${jourCompta(new Date(m.created_at))}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button></div>` : ""}`).join("")}</div>` : "";
   return `<div class="sec">Main courante</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
     <div class="card scroll"><table class="t"><thead><tr><th>Dates</th><th>Report de caisse</th><th>Poste</th><th>Prestataire</th><th>Recettes</th><th>Dépenses</th></tr></thead>
@@ -5267,6 +5272,7 @@ async function blocMainCouranteInstitut(pi) {
     <tr class="tot"><td><b>TOTAL</b></td><td></td><td></td><td></td><td class="money"><b>${fcfa(recT + appT)}</b></td><td class="money"><b>${fcfa(depT)}</b></td></tr>
     </tbody></table></div>
     <div class="line"><b>TOTAL MAIN COURANTE</b><b class="money">${fcfa(solde)}</b></div>
+    ${depsHtml}
     ${ecrit() ? `<button class="btn full ghost" data-act="rapportjourinst" data-id="${pi.id}">📄 Générer le rapport de cette période (PDF)</button>` : ""}`;
 }
 document.addEventListener("change", e => {
