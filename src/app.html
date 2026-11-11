@@ -435,6 +435,7 @@ async function console_() {
 
 /* ---------- coque de l'application ---------- */
 function rendre() {
+  if (S.portail === "residence") { ecranResidenceAccueil().catch(e => toast(e.message, true)); return; }
   const t = onglets(); if (!t.some(x => x[0] === S.tab)) S.tab = t[0][0];
   $("#app").innerHTML = `<header class="top"><div class="wrap">
       <div class="row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div>
