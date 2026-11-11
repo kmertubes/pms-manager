@@ -5036,15 +5036,38 @@ async function ecranInstitutAccueil() {
     <main class="wrap">
       <div class="seg">
         <button data-act="insttab" data-k="tableau" class="${S.instTab === "tableau" ? "on" : ""}">Tableau de bord</button>
+        <button data-act="insttab" data-k="vente" class="${S.instTab === "vente" ? "on" : ""}">Vente</button>
       </div>
       <div id="main"><div class="empty"><span class="spin"></span></div></div>
     </main>`;
-  if (S.instTab === "tableau") { await instTableauBord(); return; }
+  if (S.instTab === "vente") { await vVenteInstitut(); return; }
+  await instTableauBord();
 }
 async function instTableauBord() {
   const pi = poleInstitut();
   if (!pi) { $("#main").innerHTML = '<div class="empty">Aucun pôle Institut configuré.</div>'; return; }
   $("#main").innerHTML = await blocInstitutAccueil(pi);
+}
+async function vVenteInstitut() {
+  const pi = poleInstitut();
+  const cs = S.caisses.filter(c => c.type !== "hebergement" && voitPole(c.pole_id) && (!pi || c.pole_id === pi.id));
+  if (!cs.length) { $("#main").innerHTML = '<div class="empty">Aucune caisse de vente configurée pour l\'Institut.</div>'; return; }
+  if (!cs.some(c => c.id === S.caisseSel)) S.caisseSel = cs[0].id;
+  const c = caisse(S.caisseSel), depuis = aDouala(today()).toISOString();
+  const [ve, enc] = await Promise.all([
+    q(sb.from("ventes").select("id,total,statut,lieu,created_at,vendeur,reservation_id,vente_lignes(quantite,produits(nom))").eq("caisse_id", c.id).gte("created_at", depuis).order("created_at", { ascending: true })),
+    q(sb.from("paiements").select("montant,sens,moyen,vente_id").eq("caisse_id", c.id).eq("annule", false).gte("created_at", depuis)).then(signe),
+  ]);
+  const paye = id => enc.filter(p => p.vente_id === id).reduce((t, p) => t + p.montant, 0);
+  const total = enc.reduce((t, p) => t + p.montant, 0);
+  $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
+    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
+    ${ecrit() ? `<button class="btn full" data-act="newvente">＋ Nouvelle vente</button>` : ""}
+    <div class="sec">Ventes du jour</div>
+    ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
+      <div class="title">${esc(v.vente_lignes.map(l => (Number(l.quantite) !== 1 ? nb(l.quantite) + " × " : "") + l.produits.nom).join(", ") || "Vente")}</div>
+      <div class="sub">${heure(v.created_at)}${v.lieu ? " · " + esc(v.lieu) : ""} · ${esc(nomMembre(v.vendeur))}</div></div><b class="money">${fcfa(v.total)}</b></div>
+      <div class="line">${chip(VST, v.statut)}${v.statut !== "annulee" && reste > 0 ? `<span class="chip w">À encaisser ${fcfa(reste)}</span>` : ""}</div></div>`; }).join("") || '<div class="empty">Aucune vente aujourd\'hui.</div>'}`;
 }
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
