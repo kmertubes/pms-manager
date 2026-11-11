@@ -4846,21 +4846,17 @@ function ecranPortail() {
       ${carte("gestion", "📊", "Gestion", "Tableau de bord, caisses, finances")}
     </main>`;
 }
-const PERS_ACC = [["jour", "Aujourd'hui"], ["hier", "Hier"], ["7j", "7 jours"], ["mois", "Ce mois"], ["moisp", "Mois dernier"], ["annee", "Cette année"], ["perso", "Choisir les dates"]];
 function perAcc() {
-  if (S.accPer === "perso") { const du = S.accDu || today(), au = S.accAu || today(); return du <= au ? [du, au] : [au, du]; }
-  if (S.accPer === "hier") { const h = ajoutJours(today(), -1); return [h, h]; }
-  return periode(S.accPer) || [today(), today()];
+  const du = S.accDu || today(), au = S.accAu || today();
+  return du <= au ? [du, au] : [au, du];
 }
 async function ecranResidenceAccueil() {
   const pole = poleResidence();
-  S.accPer ||= "jour";
   const [du, au] = perAcc();
   $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button><button class="iconbtn" data-act="logout">Quitter</button></div></header>
     <main class="wrap" id="main">
       <div class="sec">Tableau de bord</div>
-      <div class="seg">${PERS_ACC.map(([k, l]) => `<button data-act="accper" data-p="${k}" class="${S.accPer === k ? "on" : ""}">${l}</button>`).join("")}</div>
-      ${S.accPer === "perso" ? `<div class="duo"><label class="f">Du<input class="i" type="date" id="acc-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="acc-au" value="${au}" max="${today()}"></label></div>` : ""}
+      <div class="duo"><label class="f">Du<input class="i" type="date" id="acc-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="acc-au" value="${au}" max="${today()}"></label></div>
       <p class="sub">${du === au ? esc(dateFr(du)) : `du ${esc(dateFr(du))} au ${esc(dateFr(au))}`}</p>
       <div class="sec">Actuellement</div>
       <div class="stats" id="acc-stats"><div class="empty"><span class="spin"></span></div></div>
@@ -4888,7 +4884,6 @@ Object.assign(A, {
     else { S.poleTab = ""; S.tab = "finances"; S.fin = "caisseresidence"; }
     rendre();
   },
-  accper: b => { S.accPer = b.dataset.p; ecranResidenceAccueil().catch(e => toast(e.message, true)); },
 });
 
 const _vTableau5 = vTableau3;
@@ -4898,6 +4893,23 @@ vTableau3 = async () => {
   if (S.tab !== "tableau" || !res || (S.poleTab && S.poleTab !== res.id)) return;
   $("#main").insertAdjacentHTML("afterbegin", `<div class="sec">Caisse Résidence</div>${await finCaisseResidence()}`);
 };
+
+/* ======== AFFICHAGE ORDINATEUR (responsive) ========
+   Le CSS d'origine est pensé mobile (colonne centrée à 640px) : sur un
+   grand écran, ça restait aussi étroit que sur un téléphone. Au-delà de
+   860px de large, on élargit la page et on remet les blocs en grille. */
+document.head.insertAdjacentHTML("beforeend", `<style>
+@media (min-width:860px){
+  .wrap{max-width:1180px}
+  main{padding-block:28px 64px}
+  .stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .duo{grid-template-columns:repeat(2,minmax(0,260px));gap:16px}
+  .card{padding:18px}
+}
+@media (min-width:1200px){
+  .wrap{max-width:1320px}
+}
+</style>`);
 </script>
 </body>
 </html>
