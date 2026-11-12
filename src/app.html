@@ -337,7 +337,7 @@ async function chargerSession() {
   if (!S.role) { $("#app").innerHTML = `<div class="wrap login"><div class="brand"><small>${esc(S.etab.nom)}</small><h1>Accès non autorisé</h1></div><p class="sub">Votre compte n'est pas rattaché à cet établissement.</p><button class="btn ghost" data-act="logout">Se déconnecter</button></div>`; return; }
   if (r.doit_changer_pin) return ecranPin();
   await chargerRef();
-  if (!pdg()) {
+  if (!pdg() && !dir()) {
     const pt = await pointagesAujourdhui();
     if (!pt.some(p => p.type === "arrivee")) { ecranPointageArrivee(); demarrerCouvreFeu(); return; }
   }
@@ -369,7 +369,7 @@ function demarrerCouvreFeu() {
   S.couvreFeu = setInterval(verifierCouvreFeu, 60000);
 }
 async function verifierCouvreFeu() {
-  if (!S.me || pdg()) return;
+  if (!S.me || pdg() || dir()) return;
   if (heureActuelle() < "20:00") return;
   let pt; try { pt = await pointagesAujourdhui(); } catch { return; }
   const arr = pt.find(p => p.type === "arrivee"), dep = [...pt].reverse().find(p => p.type === "depart");
