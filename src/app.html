@@ -2350,6 +2350,8 @@ const A6 = {
   dovalidses: b => act(b, async () => { await rpc("valider_session", { p_session: b.dataset.id, p_commentaire: $("#vs-c").value }); closeSheet(); toast("Caisse validée"); rendre(); }),
   annulmvt: b => openSheet("Annuler ce mouvement", `<p>Le mouvement reste visible, barré, avec votre motif.</p>${motif()}<button class="btn full bad" data-act="doannulmvt" data-k="${b.dataset.k}" data-id="${b.dataset.id}">Annuler le mouvement</button>`),
   doannulmvt: b => act(b, async () => { await rpc("annuler_mouvement", { p_type: b.dataset.k, p_id: b.dataset.id, p_motif: lireMotif() }); closeSheet(); toast("Mouvement annulé"); rendre(); }),
+  restaurermvt: b => openSheet("Rétablir ce mouvement", `<p>Le mouvement redevient actif et compte à nouveau dans les totaux.</p>${motif("rm", "Pourquoi le rétablir (obligatoire)")}<button class="btn full ok" data-act="dorestaurermvt" data-id="${b.dataset.id}">Rétablir le mouvement</button>`),
+  dorestaurermvt: b => act(b, async () => { await rpc("restaurer_mouvement", { p_id: b.dataset.id, p_motif: lireMotif("rm") }); closeSheet(); toast("Mouvement rétabli"); rendre(); }),
   opbanque: async () => {
     const cps = await optComptes(null);
     openSheet("Opération bancaire", `<label class="f">Compte<select class="i" id="ob-c">${cps}</select></label>
@@ -5312,6 +5314,16 @@ async function blocMainCouranteInstitut(pi) {
     <div class="card">${deps.map(m => `<div class="line"><div class="grow"><div class="title">${esc(MVC[m.type] || m.type)}${m.categorie ? " · " + esc(m.categorie) : ""}</div>
       <div class="sub">${ddmmyyyy(jourCompta(new Date(m.created_at)))} · ${heure(m.created_at)}${m.libelle ? " · " + esc(m.libelle) : ""}${m.employe ? " · " + esc(m.employe) : ""}</div></div><b class="money">${fcfa(m.montant)}</b></div>
       ${dir() ? `<div class="line"><span class="grow"></span><button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle || "")}" data-date="${jourCompta(new Date(m.created_at))}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button></div>` : ""}`).join("")}</div>` : "";
+  let annulesHtml = "";
+  if (dir() || pdg()) { try {
+    const ids = S.caisses.filter(c => c.pole_id === pi.id && c.type !== "hebergement").map(c => c.id);
+    const t0 = aDouala(du, T_JOUR).toISOString(), t1 = aDouala(ajoutJours(au, 1), T_JOUR).toISOString();
+    const ann = ids.length ? await q(sb.from("mouvements_caisse").select("id,type,montant,libelle,categorie,created_at").in("caisse_id", ids).eq("annule", true).gte("created_at", t0).lt("created_at", t1).order("created_at", { ascending: false })) : [];
+    annulesHtml = ann.length ? `<div class="sec">Mouvements annulés sur cette période</div>
+      <div class="card">${ann.map(m => `<div class="line"><div class="grow"><div class="title" style="text-decoration:line-through">${esc(MVC[m.type] || m.type)}${m.categorie ? " · " + esc(m.categorie) : ""}</div>
+        <div class="sub">${ddmmyyyy(jourCompta(new Date(m.created_at)))} · ${heure(m.created_at)}${m.libelle ? " · " + esc(m.libelle) : ""}</div></div><b class="money" style="text-decoration:line-through">${fcfa(m.montant)}</b></div>
+        <div class="line"><span class="grow"></span><button class="btn sm ghost" data-act="restaurermvt" data-id="${m.id}">Rétablir</button></div>`).join("")}</div>` : "";
+  } catch (e) {} }
   return `<div class="sec">Main courante</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
     <div class="card scroll"><table class="t"><thead><tr><th>Dates</th><th>Report de caisse</th><th>Poste</th><th>Prestataire</th><th>Recettes</th><th>Dépenses</th></tr></thead>
@@ -5320,6 +5332,7 @@ async function blocMainCouranteInstitut(pi) {
     </tbody></table></div>
     <div class="line"><b>TOTAL MAIN COURANTE</b><b class="money">${fcfa(solde)}</b></div>
     ${depsHtml}
+    ${annulesHtml}
     ${ecrit() ? `<button class="btn full ghost" data-act="rapportjourinst" data-id="${pi.id}">📄 Générer le rapport de cette période (PDF)</button>` : ""}`;
 }
 document.addEventListener("change", e => {
@@ -5354,7 +5367,7 @@ async function blocInstitutAccueil(pi) {
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
       ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
       ${l("Total Cotisation Aziccul", aziccul.cotisation)}
-      ${l("Total versement Aziccul", aziccul.versement)}</dl>
+      ${l("Total Épargne Aziccul", aziccul.versement)}</dl>
       ${mcSolde !== null ? `<div class="solde" style="border-color:var(--accent)"><span><b>TOTAL MAIN COURANTE (du ${dateFr(mdu)} au ${dateFr(mau)})</b></span><span class="money"><b>${fcfa(mcSolde)}</b></span></div>` : ""}
       <div class="solde"><span>Argent en caisse (espèces en main, à l'instant)</span><span class="money">${fcfa(cashReel !== null ? cashReel : T.cash)}</span></div></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
