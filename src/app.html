@@ -1914,7 +1914,7 @@ function prestataires(pid) {
   const l = S.membres.filter(m => m.actif && m.role !== "pdg" && m.membre_postes.some(x => !x.fin && ps.includes(x.poste_id)));
   return { l: l.length ? l : S.membres.filter(m => m.actif && m.role !== "pdg"), defaut: !l.length };
 }
-const prestationsInstitut = pid => S.produits.filter(p => caisse(p.caisse_id)?.pole_id === pid && !p.archive)
+const prestationsInstitut = pid => S.produits.filter(p => caisse(p.caisse_id)?.pole_id === pid && caisse(p.caisse_id)?.type !== "bar" && !p.archive)
   .flatMap(p => p.formules.filter(f => f.actif).map(f => ({ p, f, v: p.id + "|" + f.id, l: p.nom + (p.formules.filter(x => x.actif).length > 1 ? " – " + f.nom : "") })));
 const caisseSoins = pid => S.caisses.filter(c => c.pole_id === pid && c.type !== "hebergement").sort((a, b) => /soin/i.test(b.nom) - /soin/i.test(a.nom))[0];
 const nomPresta = r => { const p = S.produits.find(x => x.id === r.produit_id); return p ? p.nom : "Prestation"; };
