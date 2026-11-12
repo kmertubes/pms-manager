@@ -5254,7 +5254,9 @@ async function vVenteInstitut() {
   const paye = id => enc.filter(p => p.vente_id === id).reduce((t, p) => t + p.montant, 0);
   const total = enc.reduce((t, p) => t + p.montant, 0);
   let cashReel; try { cashReel = await argentEnCaisseReel(pi?.id); } catch (e) { cashReel = null; }
+  let bj = ""; try { bj = await blocJournee(c); } catch (e) {}
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
+    ${bj}
     <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
     ${cashReel !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(cashReel)}</b><span>Argent en caisse (espèces, à l'instant)</span></div></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
