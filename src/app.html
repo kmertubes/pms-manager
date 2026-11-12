@@ -4639,10 +4639,23 @@ async function donneesMainCourante(d0, d1, pid) {
     tout(() => sb.from("mouvements_caisse").select("id,type,montant,libelle,beneficiaire,categorie,nature,employe,created_at").in("caisse_id", ids).eq("annule", false).gte("created_at", t0).lt("created_at", t1).order("created_at")),
     q(sb.from("clotures").select("jour,especes_comptees").eq("pole_id", pid).eq("statut", "fermee").lt("jour", d0).order("jour", { ascending: false }).limit(1)),
   ]);
+  /* comble automatiquement tout trou entre la dernière clôture et d0 (jours jamais clôturés) pour que
+     le report reflète toujours la réalité, même sans clôture quotidienne régulière */
+  let report = cl[0]?.especes_comptees || 0;
+  const gapDebut = cl[0]?.jour ? ajoutJours(cl[0].jour, 1) : null;
+  if (gapDebut && gapDebut < d0) {
+    const gt0 = aDouala(gapDebut, T_JOUR).toISOString();
+    const [gpa, gmv] = await Promise.all([
+      tout(() => sb.from("paiements").select("montant,sens").in("caisse_id", ids).eq("annule", false).gte("created_at", gt0).lt("created_at", t0)),
+      tout(() => sb.from("mouvements_caisse").select("type,montant").in("caisse_id", ids).eq("annule", false).gte("created_at", gt0).lt("created_at", t0)),
+    ]);
+    const sortieG = m => ["depense", "retrait", "versement_banque"].includes(m.type);
+    report += gpa.reduce((t, p) => t + p.montant * (p.sens || 1), 0) + gmv.filter(m => m.type === "apport").reduce((t, m) => t + m.montant, 0) - gmv.filter(sortieG).reduce((t, m) => t + m.montant, 0);
+  }
   const vids = [...new Set(pa.map(p => p.vente_id).filter(Boolean))], ve = {};
   for (let i = 0; i < vids.length; i += 100)
     (await q(sb.from("ventes").select("id,prestataire,vendeur,vente_lignes(quantite,detail,produits(nom),formules(nom))").in("id", vids.slice(i, i + 100)))).forEach(v => ve[v.id] = v);
-  return { pa, mv, ve, report: cl[0]?.especes_comptees || 0 };
+  return { pa, mv, ve, report };
 }
 
 function poste(v) {
