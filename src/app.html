@@ -1746,7 +1746,7 @@ function badgeStock(pid) {
 function onglets() {
   const t = [];
   if (dir() || pdg()) t.push(["tableau", "Tableau"]);
-  if (!pdg()) t.push(["jour", "Ma journée"]);
+  t.push(["jour", "Mon espace"]);
   if (acces("resa")) t.push(["resa", "Réservations"]);
   if (acces("caisse")) t.push(["caisse", "Caisses"]);
   if (dir() || pdg() || sup()) t.push(["caissegen", "Caisse générale"]);
