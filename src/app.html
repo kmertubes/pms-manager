@@ -4311,14 +4311,19 @@ blocJournee = async c => {
   const pid = c.pole_id, pole = S.poles.find(p => p.id === pid); if (!pole) return "";
   const residence = pole.code === "residence";
   const j = jourC(), old = passe();
-  const D = await donneesPole(pid, debutJ(j), old ? finJ(j) : new Date()), Jc = calculs(D, "J"), Nc = calculs(D, "N");
+  const [D, [cl]] = await Promise.all([
+    donneesPole(pid, debutJ(j), old ? finJ(j) : new Date()),
+    q(sb.from("clotures").select("*").eq("pole_id", pid).is("caisse_id", null).eq("jour", j).limit(1)),
+  ]);
+  const Jc = calculs(D, "J"), Nc = calculs(D, "N");
   const mvts = D.mv.filter(m => m.caisse_id === c.id);
+  const st = cl?.statut === "fermee" ? '<span class="chip n">Fermée</span>' : cl?.ouverte_le ? `<span class="chip ${old ? "w" : "ok"}">${old ? "Ouverte, pas fermée" : "Ouverte"}</span>` : `<span class="chip w">${old ? "Jamais ouverte" : "Pas encore ouverte"}</span>`;
   return `<div class="card" style="border-color:var(--accent)">
     <div class="navj"><button class="btn ghost" data-act="cjour" data-d="-1" aria-label="Jour précédent">‹</button><input class="i" type="date" id="cj-d" value="${j}" max="${jourCompta()}">
       <button class="btn ghost" data-act="cjour" data-d="1" aria-label="Jour suivant" ${old ? "" : "disabled"}>›</button></div>
     ${old ? `<button class="btn sm ghost" data-act="cjour" data-d="0">Revenir à aujourd'hui</button>` : ""}
-    <div class="line"><div class="grow"><div class="title">Caisse ${esc(c.nom)} · ${esc(dateLongue(j))}</div>
-    <div class="sub">Caisse de collecte · Journée 06 h 30 – 18 h 30 · Nuit 18 h 30 – 06 h 30</div></div></div>
+    <div class="line"><div class="grow"><div class="title">Caisse ${esc(pole.nom)} · ${esc(dateLongue(j))}</div>
+    <div class="sub">${cl?.ouverte_le ? `Ouverte par ${esc(nomMembre(cl.ouverte_par))} le ${esc(quand(cl.ouverte_le))} · ` : ""}${cl?.fermee_le ? `Fermée le ${esc(quand(cl.fermee_le))} · ` : ""}Journée 06 h 30 – 18 h 30 · Nuit 18 h 30 – 06 h 30</div></div>${st}</div>
     ${(() => { const e = per => { const x = { esp: 0, om: 0, momo: 0, tot: 0 }; D.pa.filter(p => p.caisse_id === c.id && periodeDe(p.created_at) === per).forEach(p => { const m = p.montant * (p.sens || 1);
         if (p.moyen === "especes") x.esp += m; else if (p.moyen === "orange_money") x.om += m; else if (p.moyen === "mtn_momo") x.momo += m; x.tot += m; }); return x; }, J = e("J"), N = e("N");
       return `<table class="t enc"><thead><tr><th>FCFA</th><th>Espèces</th><th>OM</th><th>MoMo</th></tr></thead><tbody>
@@ -4326,7 +4331,10 @@ blocJournee = async c => {
       <tr><td>Nuit</td><td>${nb(N.esp, 0)}</td><td>${nb(N.om, 0)}</td><td>${nb(N.momo, 0)}</td></tr></tbody></table>
       <div class="line"><span class="grow"><b>Encaissé · ${esc(c.nom)}</b></span><b class="money">${fcfa(J.tot + N.tot)}</b></div>
       ${residence ? `<div class="line"><span class="grow sub">Toute la Résidence (toutes caisses, à titre indicatif)</span><span class="money sub">${fcfa(Jc.enc.tot + Nc.enc.tot)}</span></div>` : ""}`; })()}
+    ${cl?.statut === "fermee" ? `<div class="line"><span class="grow sub">Espèces comptées ${fcfa(cl.especes_comptees)} · attendues ${fcfa(cl.especes_attendues)}</span><b class="${cl.ecart < 0 ? "neg" : cl.ecart > 0 ? "" : "pos"}">Écart ${fcfa(cl.ecart)}</b></div>` : ""}
     ${ecrit() && (!old || dir()) ? `<div class="btns"><button class="btn sm ghost" data-act="mvc" data-t="depense">Dépense</button>${old ? "" : '<button class="btn sm ghost" data-act="mvc" data-t="versement_banque">Versement banque</button>'}<button class="btn sm ghost" data-act="mvc" data-t="apport">Apport</button></div>` : ""}
+    ${dir() ? `<div class="btns">${!cl?.ouverte_le ? `<button class="btn" data-act="ouvrirj" data-p="${pid}">Ouvrir ${old ? "cette journée" : `la caisse ${esc(pole.nom)}`}</button>` : ""}
+      <button class="btn ${old && cl?.statut !== "fermee" ? "" : "ghost"}" data-act="fermerj" data-p="${pid}">${cl?.statut === "fermee" ? "Corriger la fermeture" : old ? "Fermer cette journée" : `Fermer la caisse ${esc(pole.nom)}`}</button></div>` : ""}
     ${old && dir() ? '<p class="note">Une dépense ou un apport ajouté ici est daté de cette journée (noté dans les corrections).</p>' : ""}
     ${mvts.length ? `<div class="sub" style="margin-top:6px">${mvts.map(m => `<div class="line"><span class="grow">${heure(m.created_at)} · ${esc(MVC[m.type])} · ${esc(m.libelle)}</span><span class="money">${m.type === "apport" ? "+" : "−"} ${fcfa(m.montant)}</span>
       ${dir() ? `<button class="btn sm ghost" data-act="modmvt" data-id="${m.id}" data-m="${m.montant}" data-l="${esc(m.libelle)}" data-date="${jourCompta(new Date(m.created_at))}">Modifier</button><button class="btn sm ghost" data-act="annulmvt" data-k="caisse" data-id="${m.id}">Annuler</button>` : ""}</div>`).join("")}</div>` : ""}
@@ -4354,51 +4362,16 @@ vCaisse3 = async () => {
 document.addEventListener("change", e => { if (e.target.id === "cj-d" && e.target.value) { S.cjour = e.target.value >= jourCompta() ? null : e.target.value; rendre(); } });
 
 /* ---------- onglet Caisse générale ---------- */
-async function blocCaisseGenerale() {
-  const j = jourC(), old = passe();
-  const [cl] = await q(sb.from("clotures").select("*").eq("etablissement_id", S.etab.id).is("pole_id", null).is("caisse_id", null).eq("jour", j).limit(1));
-  const t0 = debutJ(j), t1 = old ? finJ(j) : new Date();
-  const [pa, mv] = await Promise.all([
-    q(sb.from("paiements").select("montant,sens,moyen").eq("etablissement_id", S.etab.id).eq("annule", false).gte("created_at", t0.toISOString()).lt("created_at", t1.toISOString())),
-    q(sb.from("mouvements_caisse").select("type,montant").eq("etablissement_id", S.etab.id).eq("annule", false).gte("created_at", t0.toISOString()).lt("created_at", t1.toISOString())),
-  ]);
-  const enc = { esp: 0, om: 0, momo: 0, aut: 0 };
-  pa.forEach(p => { const m = p.montant * (p.sens || 1);
-    if (p.moyen === "especes") enc.esp += m; else if (p.moyen === "orange_money") enc.om += m; else if (p.moyen === "mtn_momo") enc.momo += m; else enc.aut += m; });
-  const tot = enc.esp + enc.om + enc.momo + enc.aut;
-  const dep = mv.filter(m => ["depense", "retrait"].includes(m.type)).reduce((t, m) => t + m.montant, 0);
-  const app = mv.filter(m => m.type === "apport").reduce((t, m) => t + m.montant, 0);
-  const ver = mv.filter(m => m.type === "versement_banque").reduce((t, m) => t + m.montant, 0);
-  const st = cl?.statut === "fermee" ? '<span class="chip n">Fermée</span>' : cl?.ouverte_le ? `<span class="chip ${old ? "w" : "ok"}">${old ? "Ouverte, pas fermée" : "Ouverte"}</span>` : `<span class="chip w">${old ? "Jamais ouverte" : "Pas encore ouverte"}</span>`;
-  return `<div class="card" style="border-color:var(--accent)">
-    <div class="navj"><button class="btn ghost" data-act="cjour" data-d="-1" aria-label="Jour précédent">‹</button><input class="i" type="date" id="cj-d" value="${j}" max="${jourCompta()}">
-      <button class="btn ghost" data-act="cjour" data-d="1" aria-label="Jour suivant" ${old ? "" : "disabled"}>›</button></div>
-    ${old ? `<button class="btn sm ghost" data-act="cjour" data-d="0">Revenir à aujourd'hui</button>` : ""}
-    <div class="line"><div class="grow"><div class="title">Caisse générale · ${esc(dateLongue(j))}</div>
-    <div class="sub">${cl?.ouverte_le ? `Ouverte par ${esc(nomMembre(cl.ouverte_par))} le ${esc(quand(cl.ouverte_le))} · ` : ""}${cl?.fermee_le ? `Fermée le ${esc(quand(cl.fermee_le))} · ` : ""}Institut et Résidence réunis · Journée 06 h 30 – 18 h 30</div></div>${st}</div>
-    <table class="t enc"><thead><tr><th>FCFA</th><th>Espèces</th><th>OM</th><th>MoMo</th></tr></thead><tbody>
-      <tr><td>Encaissé</td><td>${nb(enc.esp, 0)}</td><td>${nb(enc.om, 0)}</td><td>${nb(enc.momo, 0)}</td></tr></tbody></table>
-    <div class="line"><span class="grow"><b>Total encaissé</b></span><b class="money">${fcfa(tot)}</b></div>
-    ${dep ? `<div class="line"><span class="grow">Dépenses</span><b class="money neg">${fcfa(dep)}</b></div>` : ""}
-    ${app ? `<div class="line"><span class="grow">Apports</span><b class="money">${fcfa(app)}</b></div>` : ""}
-    ${ver ? `<div class="line"><span class="grow">Versé à la banque</span><b class="money">${fcfa(ver)}</b></div>` : ""}
-    ${cl?.statut === "fermee" ? `<div class="line"><span class="grow sub">Espèces comptées ${fcfa(cl.especes_comptees)} · attendues ${fcfa(cl.especes_attendues)}</span><b class="${cl.ecart < 0 ? "neg" : cl.ecart > 0 ? "" : "pos"}">Écart ${fcfa(cl.ecart)}</b></div>` : ""}
-    ${dir() ? `<div class="btns">${!cl?.ouverte_le ? `<button class="btn" data-act="ouvrirjg">Ouvrir ${old ? "cette journée" : "la caisse générale"}</button>` : ""}
-      <button class="btn ${old && cl?.statut !== "fermee" ? "" : "ghost"}" data-act="fermerjg">${cl?.statut === "fermee" ? "Corriger la fermeture" : old ? "Fermer cette journée" : "Fermer la caisse générale"}</button></div>` : ""}
-    <p class="note">C'est la seule caisse qui s'ouvre et se ferme chaque jour. Les autres (Bar, Piscine, Restaurant, Hébergement, Institut) ne font que collecter.</p>
-  </div>`;
-}
 async function vCaisseGen() {
   const g = S.cg ||= { du: today().slice(0, 8) + "01", au: jourCompta(), pole: "" };
   $("#main").innerHTML = spinner;
-  const bcg = await blocCaisseGenerale().catch(e => `<div class="empty">${esc(e.message)}</div>`);
   const rows = await rpc("caisse_generale", { p_etab: S.etab.id, p_du: g.du, p_au: g.au, p_pole: g.pole || null }) || [];
   const parJ = {}; rows.forEach(r => { const x = parJ[r.jour] ||= { jour: r.jour, esp: 0, om: 0, momo: 0, aut: 0, dep: 0, ver: 0, app: 0, ch: 0, ve: 0, cred: 0, ecart: 0, ferme: 0, actifs: 0, n: 0 };
     x.esp += +r.especes; x.om += +r.om; x.momo += +r.momo; x.aut += +r.autres; x.dep += +r.depenses; x.ver += +r.versements; x.app += +r.apports; x.ch += +r.charges; x.ve += +r.ventes; x.cred += +r.credits; x.n++;
     const act_ = +r.nb_paiements > 0 || +r.ventes > 0 || +r.depenses > 0; if (act_) x.actifs++; if (r.statut === "fermee") { x.ferme++; x.ecart += r.ecart || 0; } else if (!act_) x.ferme++; });
   const js = Object.values(parJ).sort((a, b) => a.jour.localeCompare(b.jour)), T = js.reduce((t, x) => { ["esp", "om", "momo", "aut", "dep", "ver", "ch", "ve", "cred", "ecart"].forEach(k => t[k] = (t[k] || 0) + x[k]); return t; }, {});
   const enc = x => x.esp + x.om + x.momo + x.aut, nonF = js.filter(x => x.ferme < x.n && x.jour < jourCompta());
-  $("#main").innerHTML = `${bcg}
+  $("#main").innerHTML = `<p class="note">Vue d'ensemble : chaque caisse (Institut, Résidence) s'ouvre et se ferme à part, dans son propre onglet. Ici, c'est une vue groupée en lecture seule — espèces, Orange Money, MoMo et écarts des deux pôles réunis, jour par jour.</p>
     <div class="sec">Caisse générale · toutes les caisses</div>
     <div class="seg">${[["", "Tout"], ...S.poles.map(p => [p.id, p.code === "residence" ? "Résidence" : "Institut"])].map(([k, l]) => `<button data-act="cgpole" data-p="${k}" class="${g.pole === k ? "on" : ""}">${l}</button>`).join("")}</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="cg-du" value="${g.du}" max="${jourCompta()}"></label><label class="f">Au<input class="i" type="date" id="cg-au" value="${g.au}" max="${jourCompta()}"></label></div>
@@ -4426,21 +4399,6 @@ Object.assign(A, {
   cgjour: b => { S.cjour = b.dataset.j >= jourCompta() ? null : b.dataset.j; const pid = S.cg.pole || S.poles.find(p => p.code === "residence")?.id;
     const c = S.caisses.find(x => x.pole_id === pid && x.actif !== false); if (c) S.caisseSel = c.id; S.tab = "caisse"; rendre(); },
   ouvrirj: b => act(b, async () => { await rpc("ouvrir_journee", { p_pole: b.dataset.p, p_jour: jourC(), p_caisse: b.dataset.c || null }); toast(passe() ? "Journée ouverte" : "Caisse ouverte : les ventes depuis 06 h 30 y sont rattachées"); rendre(); }),
-  ouvrirjg: b => act(b, async () => { await rpc("ouvrir_journee_generale", { p_etab: S.etab.id, p_jour: jourC() }); toast(passe() ? "Journée ouverte" : "Caisse générale ouverte"); rendre(); }),
-  fermerjg: b => { const j = jourC();
-    openSheet("Fermer la caisse générale", `<label class="f">Journée à fermer (06 h 30 → 06 h 30)<input class="i" type="date" id="fj-j" value="${j}" max="${today()}"></label>
-      <label class="f">Espèces comptées (FCFA)<input class="i" type="number" inputmode="numeric" id="fj-c"></label>
-      <div class="duo"><label class="f">Solde Orange Money<input class="i" type="number" inputmode="numeric" id="fj-om"></label><label class="f">Solde MoMo<input class="i" type="number" inputmode="numeric" id="fj-mm"></label></div>
-      <label class="f">Commentaire<textarea class="i" id="fj-m" placeholder="Obligatoire s'il y a un écart"></textarea></label>
-      <button class="btn full" data-act="dofermerjg">Fermer et préparer le rapport</button>`); },
-  dofermerjg: b => act(b, async () => {
-    if ($("#fj-c").value === "") throw new Error("Comptez et saisissez les espèces");
-    const v = id => $(id).value === "" ? null : int(id), j = $("#fj-j").value;
-    const r = await rpc("fermer_journee_generale", { p_etab: S.etab.id, p_jour: j, p_compte: int("#fj-c"), p_om: v("#fj-om"), p_momo: v("#fj-mm"), p_commentaire: $("#fj-m").value });
-    closeSheet(); rendre();
-    openSheet("Caisse générale fermée", `<div class="card"><dl class="kv"><dt>Espèces attendues</dt><dd class="money">${fcfa(r?.especes_attendues)}</dd><dt>Espèces comptées</dt><dd class="money">${fcfa(r?.especes_comptees)}</dd>
-      <dt><b>Écart</b></dt><dd class="money"><b class="${r?.ecart < 0 ? "neg" : ""}">${fcfa(r?.ecart)}</b></dd></dl></div>`);
-  }),
 });
 { const _f = A.fermerj; A.fermerj = b => { _f(b); if (S.cjour && $("#fj-j")) $("#fj-j").value = S.cjour; }; }
 { const _d = A.domvc; A.domvc = b => { if (!passe()) return _d(b);
