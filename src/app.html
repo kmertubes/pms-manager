@@ -5127,8 +5127,37 @@ async function vBarRes() {
   S.caisseSel = c.id;
   await vCaisse();
   const seg = $("#main .seg"); if (seg) seg.remove();
-  $("#main").insertAdjacentHTML("beforeend", await blocMainCourante(c));
+  $("#main").insertAdjacentHTML("beforeend", await blocMainCouranteBar(c));
 }
+function perMB() {
+  const du = S.mbDu || today(), au = S.mbAu || today();
+  return du <= au ? [du, au] : [au, du];
+}
+async function blocMainCouranteBar(c) {
+  const [du, au] = perMB();
+  const t0 = aDouala(du, T_JOUR).toISOString(), t1 = aDouala(ajoutJours(au, 1), T_JOUR).toISOString();
+  const ve = await q(sb.from("ventes").select("id,created_at,statut,vente_lignes(quantite,prix_unitaire,cout_unitaire,produits(nom))").eq("caisse_id", c.id).neq("statut", "annulee").gte("created_at", t0).lt("created_at", t1).order("created_at", { ascending: true }));
+  const lignes = [];
+  ve.forEach(v => (v.vente_lignes || []).forEach(l => lignes.push({
+    date: v.created_at, nom: l.produits?.nom || "Vente", qte: Number(l.quantite) || 1,
+    prixVente: Number(l.prix_unitaire) || 0, prixRevient: Number(l.cout_unitaire) || 0,
+  })));
+  let report = 0, qteT = 0, venteT = 0, margeT = 0;
+  const rows = lignes.map(l => {
+    const montant = l.qte * l.prixVente, marge = l.qte * (l.prixVente - l.prixRevient);
+    report += montant; qteT += l.qte; venteT += montant; margeT += marge;
+    return `<tr><td>${ddmmyyyy(jourCompta(new Date(l.date)))} ${heure(l.date)}</td><td class="money">${fcfa(report)}</td><td>${esc(l.nom)}</td><td class="money">${fcfa(l.prixRevient)}</td><td class="money">${fcfa(l.prixVente)}</td><td>${nb(l.qte)}</td><td class="money">${fcfa(montant)}</td><td class="money ${marge < 0 ? "neg" : ""}">${fcfa(marge)}</td></tr>`;
+  }).join("");
+  return `<div class="sec">Main courante</div>
+    <div class="duo"><label class="f">Du<input class="i" type="date" id="mb-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mb-au" value="${au}" max="${today()}"></label></div>
+    <div class="card scroll"><table class="t"><thead><tr><th>Date</th><th>Report</th><th>Produit</th><th>Prix de revient</th><th>Prix de vente</th><th>Qté</th><th>Total vente</th><th>Marge</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="8" class="empty">Aucune vente sur cette période.</td></tr>'}
+    <tr class="tot"><td><b>TOTAL</b></td><td></td><td></td><td></td><td></td><td><b>${nb(qteT)}</b></td><td class="money"><b>${fcfa(venteT)}</b></td><td class="money"><b>${fcfa(margeT)}</b></td></tr>
+    </tbody></table></div>`;
+}
+document.addEventListener("change", e => {
+  if (e.target.id === "mb-du" || e.target.id === "mb-au") { if (!e.target.value) return; S[e.target.id === "mb-du" ? "mbDu" : "mbAu"] = e.target.value; vBarRes().catch(err => toast(err.message, true)); }
+});
 async function vRestaurantRes() {
   const pole = poleResidence();
   const cs = S.caisses.filter(c => ["restaurant", "restaurant_mobile"].includes(c.type) && voitPole(c.pole_id) && (!pole || c.pole_id === pole.id));
