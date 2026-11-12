@@ -5344,12 +5344,9 @@ function perID() {
 }
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
-  const [mdu, mau] = perMI();
-  const [T, Ty, mcSolde, cashReel, aziccul] = await Promise.all([
+  const [T, Ty, aziccul] = await Promise.all([
     syntheseGenerale(today(), today(), pi.id),
     syntheseGenerale(hier, hier, pi.id),
-    soldeMainCourante(mdu, mau, pi.id).catch(() => null),
-    argentEnCaisseReel(pi.id).catch(() => null),
     totauxAziccul(pi.id).catch(() => ({ cotisation: 0, versement: 0 })),
   ]);
   const delta = T.solde - Ty.solde, bon = delta >= 0;
@@ -5367,9 +5364,7 @@ async function blocInstitutAccueil(pi) {
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
       ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
       ${l("Total Cotisation Aziccul", aziccul.cotisation)}
-      ${l("Total Épargne Aziccul", aziccul.versement)}</dl>
-      ${mcSolde !== null ? `<div class="solde" style="border-color:var(--accent)"><span><b>TOTAL MAIN COURANTE (du ${dateFr(mdu)} au ${dateFr(mau)})</b></span><span class="money"><b>${fcfa(mcSolde)}</b></span></div>` : ""}
-      <div class="solde"><span>Argent en caisse (espèces en main, à l'instant)</span><span class="money">${fcfa(cashReel !== null ? cashReel : T.cash)}</span></div></div>
+      ${l("Total Épargne Aziccul", aziccul.versement)}</dl></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   const [du, au] = perID();
   return `${synth}
