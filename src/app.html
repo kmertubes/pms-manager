@@ -4890,6 +4890,18 @@ async function syntheseGenerale(d0, d1, pole) {
   T.general = T.report + T.rec + T.app; T.dep = T.inv + T.fon + T.cot; T.solde = T.general - T.dep - T.vers; T.cash = T.solde - T.om - T.momo - T.aut;
   return T;
 }
+/* Argent en caisse "à l'instant" : contrairement à syntheseGenerale(today(),today()) qui ne compte
+   que les mouvements du jour même (et peut donc sauter des jours non clôturés), on repart toujours
+   de la dernière clôture réellement fermée et on additionne TOUT depuis ce jour-là jusqu'à aujourd'hui,
+   sans aucun trou — même si aucune clôture n'a été faite depuis plusieurs jours. */
+async function argentEnCaisseReel(pid) {
+  if (!pid) return null;
+  const [cl] = await q(sb.from("clotures").select("jour").eq("pole_id", pid).eq("statut", "fermee").order("jour", { ascending: false }).limit(1));
+  let du = cl?.jour ? ajoutJours(cl.jour, 1) : "2000-01-01";
+  if (du > today()) du = today();
+  const Z = await syntheseGenerale(du, today(), pid);
+  return Z.cash;
+}
 const _vCaisseGen28 = vCaisseGen;
 vCaisseGen = async () => {
   await _vCaisseGen28();
@@ -5218,10 +5230,10 @@ async function vVenteInstitut() {
   ]);
   const paye = id => enc.filter(p => p.vente_id === id).reduce((t, p) => t + p.montant, 0);
   const total = enc.reduce((t, p) => t + p.montant, 0);
-  let T; try { T = await syntheseGenerale(today(), today(), pi?.id); } catch (e) { T = null; }
+  let cashReel; try { cashReel = await argentEnCaisseReel(pi?.id); } catch (e) { cashReel = null; }
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
     <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
-    ${T ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(T.cash)}</b><span>Argent en caisse (espèces, aujourd'hui)</span></div></div>` : ""}
+    ${cashReel !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(cashReel)}</b><span>Argent en caisse (espèces, à l'instant)</span></div></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
     <div class="sec">Ventes du jour</div>
     ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
@@ -5295,10 +5307,11 @@ function perID() {
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
   const [mdu, mau] = perMI();
-  const [T, Ty, mcSolde] = await Promise.all([
+  const [T, Ty, mcSolde, cashReel] = await Promise.all([
     syntheseGenerale(today(), today(), pi.id),
     syntheseGenerale(hier, hier, pi.id),
     soldeMainCourante(mdu, mau, pi.id).catch(() => null),
+    argentEnCaisseReel(pi.id).catch(() => null),
   ]);
   const delta = T.solde - Ty.solde, bon = delta >= 0;
   const l = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
@@ -5312,7 +5325,7 @@ async function blocInstitutAccueil(pi) {
       ${T.cot ? l("Cotisations (épargne)", T.cot, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
       ${mcSolde !== null ? `<div class="solde" style="border-color:var(--accent)"><span><b>TOTAL MAIN COURANTE (du ${dateFr(mdu)} au ${dateFr(mau)})</b></span><span class="money"><b>${fcfa(mcSolde)}</b></span></div>` : ""}
-      <div class="solde"><span>Argent en caisse (espèces en main, aujourd'hui)</span><span class="money">${fcfa(T.cash)}</span></div></div>
+      <div class="solde"><span>Argent en caisse (espèces en main, à l'instant)</span><span class="money">${fcfa(cashReel !== null ? cashReel : T.cash)}</span></div></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   const [du, au] = perID();
   return `${synth}
