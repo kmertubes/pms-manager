@@ -4619,7 +4619,7 @@ Object.assign(A, {
 { const _tab = A.tab; A.tab = b => { if (S.hist && b.dataset.t !== "resa") S.hist.on = false; return _tab(b); }; }
 /* ======== RAPPORT PDG DE L'INSTITUT : MODÈLE « MAIN COURANTE » (DIVINE LUXURY BEAUTY 17) ======== */
 const estPoleInst = pid => S.poles.find(p => p.id === pid)?.code === "institut";
-const NATURES = { fonctionnement: "Fonctionnement", investissement: "Investissement", cotisation: "Cotisation / épargne" };
+const NATURES = { fonctionnement: "Fonctionnement", investissement: "Investissement", cotisation: "Cotisation", epargne: "Épargne" };
 const JSEM = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 const jsem = j => JSEM[new Date(j + "T12:00:00Z").getUTCDay()];
 const ddmm = j => j.slice(8, 10) + "/" + j.slice(5, 7);
@@ -4792,7 +4792,7 @@ async function rapportMainCourante(d0, d1, pid) {
   });
   y += 78;
   const fin = [[`REPORT AU ${ddmm(d0)} :`, D.report], ["TOTAL RECETTES :", recT], ...(appT ? [["APPORTS EN CAISSE :", appT]] : []), ["TOTAL GÉNÉRAL :", D.report + recT + appT],
-    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS (épargne) :", nat("cotisation")],
+    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS :", nat("cotisation")], ["TOTAL ÉPARGNE :", nat("epargne")],
     ...(vers ? [["VERSEMENTS À LA BANQUE :", vers]] : []), ["SOLDE :", solde]];
   fin.forEach(([a, v], i) => {
     const der = i === fin.length - 1;
@@ -4858,7 +4858,7 @@ async function champsDepense(pid, v = {}, cats = CAT_DEP) {
 }
 function brancherDepense() {
   const cat = $("#mc-cat"); if (!cat) return;
-  cat.oninput = () => { const v = cat.value.toLowerCase(); if (/cotis|aziccul|tontine|épargne|epargne/.test(v)) $("#mc-nat").value = "cotisation"; else if (/équipement|equipement|matériel|materiel|investiss/.test(v)) $("#mc-nat").value = "investissement"; else $("#mc-nat").value = "fonctionnement"; };
+  cat.oninput = () => { const v = cat.value.toLowerCase(); if (/cotis|tontine/.test(v)) $("#mc-nat").value = "cotisation"; else if (/épargne|epargne|aziccul/.test(v)) $("#mc-nat").value = "epargne"; else if (/équipement|equipement|matériel|materiel|investiss/.test(v)) $("#mc-nat").value = "investissement"; else $("#mc-nat").value = "fonctionnement"; };
   const emp = $("#mc-emp"); if (emp) emp.addEventListener("change", () => { if (emp.value && !cat.value) cat.value = "Produits de soin"; });
 }
 const lireDepense = () => $("#mc-cat") ? { cat: $("#mc-cat").value.trim(), nat: $("#mc-nat").value, emp: lirePresta("mc-emp") } : null;
@@ -4883,7 +4883,7 @@ document.head.insertAdjacentHTML("beforeend", `<style>.synth .kv dd{font-variant
 @media(max-width:420px){.caisses4{grid-template-columns:repeat(2,1fr)}}</style>`);
 async function syntheseCaisse(d0, d1, pid) {
   const ids = S.caisses.filter(c => c.pole_id === pid).map(c => c.id);
-  const z = { report: 0, rec: 0, om: 0, momo: 0, aut: 0, app: 0, inv: 0, fon: 0, cot: 0, vers: 0 };
+  const z = { report: 0, rec: 0, om: 0, momo: 0, aut: 0, app: 0, inv: 0, fon: 0, cot: 0, epargne: 0, vers: 0 };
   if (!ids.length) return z;
   const t0 = aDouala(d0, T_JOUR).toISOString(), t1 = aDouala(ajoutJours(d1, 1), T_JOUR).toISOString();
   const [pa, mv, cl] = await Promise.all([
@@ -4894,13 +4894,13 @@ async function syntheseCaisse(d0, d1, pid) {
   z.report = cl[0]?.especes_comptees || 0;
   pa.forEach(p => { const m = p.montant * (p.sens || 1); z.rec += m; if (p.moyen === "orange_money") z.om += m; else if (p.moyen === "mtn_momo") z.momo += m; else if (p.moyen !== "especes") z.aut += m; });
   mv.forEach(m => { if (m.type === "apport") z.app += m.montant; else if (m.type === "versement_banque") z.vers += m.montant;
-    else { const n = m.nature || "fonctionnement"; if (n === "investissement") z.inv += m.montant; else if (n === "cotisation") z.cot += m.montant; else z.fon += m.montant; } });
+    else { const n = m.nature || "fonctionnement"; if (n === "investissement") z.inv += m.montant; else if (n === "cotisation") z.cot += m.montant; else if (n === "epargne") z.epargne += m.montant; else z.fon += m.montant; } });
   return z;
 }
 async function syntheseGenerale(d0, d1, pole) {
   const ps = pole ? [pole] : S.poles.map(p => p.id), L = await Promise.all(ps.map(p => syntheseCaisse(d0, d1, p)));
   const T = L.reduce((t, z) => { Object.keys(z).forEach(k => t[k] = (t[k] || 0) + z[k]); return t; }, {});
-  T.general = T.report + T.rec + T.app; T.dep = T.inv + T.fon + T.cot; T.solde = T.general - T.dep - T.vers; T.cash = T.solde - T.om - T.momo - T.aut;
+  T.general = T.report + T.rec + T.app; T.dep = T.inv + T.fon + T.cot + T.epargne; T.solde = T.general - T.dep - T.vers; T.cash = T.solde - T.om - T.momo - T.aut;
   return T;
 }
 /* Argent en caisse "à l'instant" : contrairement à syntheseGenerale(today(),today()) qui ne compte
@@ -4912,9 +4912,9 @@ async function totauxAziccul(pid) {
   if (!pid) return { cotisation: 0, versement: 0 };
   const ids = S.caisses.filter(c => c.pole_id === pid && c.type !== "hebergement").map(c => c.id);
   if (!ids.length) return { cotisation: 0, versement: 0 };
-  const rows = await tout(() => sb.from("mouvements_caisse").select("categorie,montant").in("caisse_id", ids).eq("annule", false).in("categorie", ["Cotisation Aziccul", "Aziccul"]));
-  const sum = cat => rows.filter(r => r.categorie === cat).reduce((t, r) => t + r.montant, 0);
-  return { cotisation: sum("Cotisation Aziccul"), versement: sum("Aziccul") };
+  const rows = await tout(() => sb.from("mouvements_caisse").select("nature,montant").in("caisse_id", ids).eq("annule", false).ilike("categorie", "%aziccul%"));
+  const sum = n => rows.filter(r => r.nature === n).reduce((t, r) => t + r.montant, 0);
+  return { cotisation: sum("cotisation"), versement: sum("epargne") };
 }
 async function argentEnCaisseReel(pid) {
   if (!pid) return null;
@@ -4939,7 +4939,8 @@ vCaisseGen = async () => {
       ${l("<b>Total général</b>", T.general)}
       ${l("Total investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Total fonctionnement", T.fon, T.fon ? "neg" : "")}
-      ${l("Total cotisations (épargne)", T.cot, T.cot ? "neg" : "")}
+      ${l("Total cotisations", T.cot, T.cot ? "neg" : "")}
+      ${T.epargne ? l("Total épargne", T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
       <div class="solde"><span>Solde au ${dateFr(g.au)}</span><span class="money">${fcfa(T.solde)}</span></div></div>
     <div class="sec">Caisses générales au ${esc(dateFr(g.au))}</div>
@@ -5345,7 +5346,8 @@ async function blocInstitutAccueil(pi) {
       ${l("<b>Total général</b>", T.general)}
       ${l("Investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
-      ${T.cot ? l("Cotisations (épargne)", T.cot, "neg") : ""}
+      ${T.cot ? l("Cotisations", T.cot, "neg") : ""}
+      ${T.epargne ? l("Épargne", T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
       ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
