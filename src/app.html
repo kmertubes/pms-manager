@@ -666,16 +666,21 @@ function feuilleTache(d = {}) {
 async function vPersonnel() {
   await chargerRef();
   const pt = await q(sb.from("pointages").select("membre_id,type,horodatage").eq("etablissement_id", S.etab.id).gte("horodatage", debutJour()));
+  const actifs = S.membres.filter(m => m.actif), supprimes = S.membres.filter(m => !m.actif);
   $("#main").innerHTML = `${dir() ? '<button class="btn full" data-act="newmembre">＋ Ajouter une personne</button>' : ""}
-    <div class="sec">${S.membres.length} compte(s)</div>` + S.membres.map(m => {
+    <div class="sec">${actifs.length} compte(s)</div>` + actifs.map(m => {
       const arr = pt.find(p => p.membre_id === m.id && p.type === "arrivee");
       const postes = m.membre_postes.filter(x => !x.fin).map(x => x.postes.nom);
       return `<div class="card"><div class="line"><div class="grow"><div class="title">${esc(m.profils.nom_complet)}</div><div class="sub">+${esc(m.profils.telephone || "")} · ${postes.length ? esc(postes.join(", ")) : "aucun poste"}</div></div>
         ${m.role === "pdg" ? "" : arr ? `<span class="chip ok">Présent ${heure(arr.horodatage)}</span>` : '<span class="chip n">Absent</span>'}</div>
         ${dir() && m.id !== S.me.membre_id ? `<div class="line"><select class="i" data-role="${m.id}" aria-label="Rôle de ${esc(m.profils.nom_complet)}">${Object.entries(ROLE).map(([k, v]) => `<option value="${k}" ${m.role === k ? "selected" : ""}>${v}</option>`).join("")}</select></div>
-          <div class="btns"><button class="btn sm ghost" data-act="postes" data-id="${m.id}">Postes</button><button class="btn sm ghost" data-act="resetpin" data-id="${m.id}">Nouveau PIN</button><button class="btn sm ghost" data-act="renommer" data-id="${m.id}">Corriger le nom</button></div>`
+          <div class="btns"><button class="btn sm ghost" data-act="postes" data-id="${m.id}">Postes</button><button class="btn sm ghost" data-act="resetpin" data-id="${m.id}">Nouveau PIN</button><button class="btn sm ghost" data-act="renommer" data-id="${m.id}">Corriger le nom</button>${m.role !== "pdg" ? `<button class="btn sm ghost bad" data-act="supprimermembre" data-id="${m.id}">Supprimer</button>` : ""}</div>`
           : `<div><span class="chip">${esc(ROLE[m.role])}</span></div>`}</div>`;
-    }).join("");
+    }).join("") + (dir() && supprimes.length ? `<div class="sec">Comptes supprimés</div>` + supprimes.map(m => {
+      const postes = m.membre_postes.filter(x => !x.fin).map(x => x.postes.nom);
+      return `<div class="card" style="opacity:.6"><div class="line"><div class="grow"><div class="title">${esc(m.profils.nom_complet)}</div><div class="sub">+${esc(m.profils.telephone || "")} · ${postes.length ? esc(postes.join(", ")) : "aucun poste"}</div></div><span class="chip n">Supprimé</span></div>
+        <div class="btns"><button class="btn sm ghost" data-act="restaurermembre" data-id="${m.id}">Rétablir</button></div></div>`;
+    }).join("") : "");
 }
 function feuilleMembre() {
   openSheet("Ajouter une personne", `
@@ -3433,6 +3438,10 @@ const A12 = {
       <p class="note">Le nouveau nom apparaît partout : ventes, tâches, pointages, rapports. Le téléphone et le code PIN ne changent pas.</p>
       <button class="btn full" data-act="dorenommer" data-id="${m.id}">Enregistrer</button>`); },
   dorenommer: b => act(b, async () => { await rpc("renommer_membre", { p_membre: b.dataset.id, p_nom: $("#rn-n").value }); await chargerRef(); closeSheet(); toast("Nom corrigé"); rendre(); }),
+  supprimermembre: b => { const m = S.membres.find(x => x.id === b.dataset.id);
+    openSheet("Supprimer ce compte", `<p>${esc(m.profils.nom_complet)} ne pourra plus se connecter au PMS. Ses postes actifs seront retirés mais son historique (ventes, pointages, tâches…) reste intact. Vous pourrez rétablir ce compte plus tard.</p>${motif("sm", "Pourquoi supprimer ce compte (obligatoire)")}<button class="btn full bad" data-act="dosupprimermembre" data-id="${m.id}">Supprimer le compte</button>`); },
+  dosupprimermembre: b => act(b, async () => { await rpc("supprimer_membre", { p_membre: b.dataset.id, p_motif: lireMotif("sm") }); await chargerRef(); closeSheet(); toast("Compte supprimé"); rendre(); }),
+  restaurermembre: b => act(b, async () => { await rpc("restaurer_membre", { p_membre: b.dataset.id }); await chargerRef(); toast("Compte rétabli"); rendre(); }),
 };
 
 Object.assign(A, A12);
