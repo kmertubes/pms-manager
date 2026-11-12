@@ -483,7 +483,7 @@ function rendre() {
   if (S.portail === "institut") { ecranInstitutAccueil().catch(e => toast(e.message, true)); return; }
   const t = onglets(); if (!t.some(x => x[0] === S.tab)) S.tab = t[0][0];
   $("#app").innerHTML = `<header class="top"><div class="wrap">
-      <div class="row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div>
+      <div class="row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="espace" aria-label="Mon espace">🕒</button><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div>
       <nav class="tabs" aria-label="Sections">${t.map(([k, l]) => `<button data-act="tab" data-t="${k}" class="${S.tab === k ? "on" : ""}">${l}${k === "alertes" && S.unread ? `<span class="badge">${S.unread}</span>` : ""}</button>`).join("")}</nav>
     </div></header>
     <main class="wrap" id="main"><div class="empty"><span class="spin"></span></div></main>
@@ -5079,6 +5079,7 @@ function ecranPortail() {
       ${res && voitPole(res.id) ? carte("residence", "🏝️", "Résidence", "Hébergement, Bar, Piscine, Restaurant, réservations") : ""}
       ${inst && voitPole(inst.id) ? carte("institut", "💅", "Institut", "Luxury Beauty - Paris · soins et boutique") : ""}
       ${(pdg() || dir() || sup()) ? carte("gestion", "📊", "Gestion", "Tableau de bord, caisses, finances") : ""}
+      ${carte("espace", "🕒", "Mon espace", "Pointer mon départ, mes tâches")}
     </main>`;
 }
 function perAcc() {
@@ -5088,7 +5089,7 @@ function perAcc() {
 async function ecranResidenceAccueil() {
   const tabs = tabsResidence();
   if (!S.resTab || !tabs.some(([k]) => k === S.resTab)) S.resTab = tabs.find(([k]) => k !== "tableau")?.[0] || "tableau";
-  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div></header>
+  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="espace" aria-label="Mon espace">🕒</button><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div></header>
     <main class="wrap">
       <div class="seg">${tabs.map(([k, l]) => `<button data-act="restab" data-k="${k}" class="${S.resTab === k ? "on" : ""}">${esc(l)}</button>`).join("")}</div>
       <div id="main"></div>
@@ -5214,6 +5215,7 @@ Object.assign(A, {
     S.portail = k;
     if (k === "residence") { ecranResidenceAccueil().catch(e => toast(e.message, true)); return; }
     else if (k === "institut") { ecranInstitutAccueil().catch(e => toast(e.message, true)); return; }
+    else if (k === "espace") { S.portail = "gestion"; S.tab = "jour"; }
     else { S.poleTab = ""; S.tab = "finances"; S.fin = "caisseresidence"; }
     rendre();
   },
@@ -5231,7 +5233,7 @@ vTableau3 = async () => {
 };
 async function ecranInstitutAccueil() {
   S.instTab = S.instTab || "tableau";
-  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div></header>
+  $("#app").innerHTML = `<header class="top"><div class="wrap row"><div class="who"><div class="etab">${esc(S.etab.nom)}</div><div class="me">${esc(S.me.nom_complet)} · ${esc(ROLE[S.role])}</div></div>${(pdg() || dir() || sup()) ? '<button class="iconbtn" data-act="portail" data-k="espace" aria-label="Mon espace">🕒</button><button class="iconbtn" data-act="portail" data-k="accueil" aria-label="Portail">⌂</button>' : ""}<button class="iconbtn" data-act="logout">Quitter</button></div></header>
     <main class="wrap">
       <div class="seg">
         <button data-act="insttab" data-k="tableau" class="${S.instTab === "tableau" ? "on" : ""}">Tableau de bord</button>
