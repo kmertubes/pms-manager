@@ -7,7 +7,11 @@
 <link rel="manifest" href="/manifest.json" id="mf">
 <script>document.getElementById("mf").href="/manifest.json?e="+encodeURIComponent((location.pathname.split("/").filter(Boolean)[0]||""));</script>
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="apple-touch-icon" href="/icon-apple.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PMS">
 <title>PMS Manager</title>
 <style>
 /* Mobile-first : barre d'onglets en haut, cartes empilées, feuilles qui montent du bas */
@@ -5431,6 +5435,14 @@ document.addEventListener("wheel", e => {
   const t = e.target.closest("nav.tabs");
   if (t && t.scrollWidth > t.clientWidth) { t.scrollLeft += e.deltaY; e.preventDefault(); }
 }, { passive: false });
+
+/* PWA : enregistre le service worker pour l'installation sur iPhone/Android.
+   N'intercepte que le chargement de la page (fallback hors-ligne) ; toutes les
+   requêtes vers Supabase passent directement par le réseau, sans cache, pour
+   que chaque mise à jour déployée soit visible immédiatement. */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
+}
 </script>
 </body>
 </html>
