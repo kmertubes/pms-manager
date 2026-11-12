@@ -5221,7 +5221,7 @@ async function vVenteInstitut() {
   let T; try { T = await syntheseGenerale(today(), today(), pi?.id); } catch (e) { T = null; }
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
     <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
-    ${T ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(T.cash)}</b><span>Argent en caisse (espèces)</span></div><div class="stat"><b class="money">${fcfa(T.solde)}</b><span>Total main courante (OM/MoMo inclus)</span></div></div>` : ""}
+    ${T ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(T.cash)}</b><span>Argent en caisse (espèces, aujourd'hui)</span></div></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
     <div class="sec">Ventes du jour</div>
     ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
@@ -5233,6 +5233,14 @@ async function vVenteInstitut() {
 function perMI() {
   const du = S.miDu || today(), au = S.miAu || today();
   return du <= au ? [du, au] : [au, du];
+}
+async function soldeMainCourante(du, au, pid) {
+  const D = await donneesMainCourante(du, au, pid);
+  const sortie = m => ["depense", "retrait", "versement_banque"].includes(m.type);
+  const recT = D.pa.reduce((t, p) => t + p.montant * (p.sens || 1), 0);
+  const appT = D.mv.filter(m => m.type === "apport").reduce((t, m) => t + m.montant, 0);
+  const depT = D.mv.filter(sortie).reduce((t, m) => t + m.montant, 0);
+  return D.report + recT + appT - depT;
 }
 async function blocMainCouranteInstitut(pi) {
   if (!pi) return "";
@@ -5286,9 +5294,11 @@ function perID() {
 }
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
-  const [T, Ty] = await Promise.all([
+  const [mdu, mau] = perMI();
+  const [T, Ty, mcSolde] = await Promise.all([
     syntheseGenerale(today(), today(), pi.id),
     syntheseGenerale(hier, hier, pi.id),
+    soldeMainCourante(mdu, mau, pi.id).catch(() => null),
   ]);
   const delta = T.solde - Ty.solde, bon = delta >= 0;
   const l = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
@@ -5301,8 +5311,8 @@ async function blocInstitutAccueil(pi) {
       ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
       ${T.cot ? l("Cotisations (épargne)", T.cot, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
-      <div class="solde"><span>Total main courante (toutes caisses, OM/MoMo inclus)</span><span class="money">${fcfa(T.solde)}</span></div>
-      <div class="solde" style="border-color:var(--accent)"><span><b>Argent en caisse (espèces en main)</b></span><span class="money"><b>${fcfa(T.cash)}</b></span></div></div>
+      ${mcSolde !== null ? `<div class="solde" style="border-color:var(--accent)"><span><b>TOTAL MAIN COURANTE (du ${dateFr(mdu)} au ${dateFr(mau)})</b></span><span class="money"><b>${fcfa(mcSolde)}</b></span></div>` : ""}
+      <div class="solde"><span>Argent en caisse (espèces en main, aujourd'hui)</span><span class="money">${fcfa(T.cash)}</span></div></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   const [du, au] = perID();
   return `${synth}
