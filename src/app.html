@@ -4907,6 +4907,15 @@ async function syntheseGenerale(d0, d1, pole) {
    que les mouvements du jour même (et peut donc sauter des jours non clôturés), on repart toujours
    de la dernière clôture réellement fermée et on additionne TOUT depuis ce jour-là jusqu'à aujourd'hui,
    sans aucun trou — même si aucune clôture n'a été faite depuis plusieurs jours. */
+/* totaux cumulés (toute la période) des catégories de dépense liées à Aziccul */
+async function totauxAziccul(pid) {
+  if (!pid) return { cotisation: 0, versement: 0 };
+  const ids = S.caisses.filter(c => c.pole_id === pid && c.type !== "hebergement").map(c => c.id);
+  if (!ids.length) return { cotisation: 0, versement: 0 };
+  const rows = await tout(() => sb.from("mouvements_caisse").select("categorie,montant").in("caisse_id", ids).eq("annule", false).in("categorie", ["Cotisation Aziccul", "Aziccul"]));
+  const sum = cat => rows.filter(r => r.categorie === cat).reduce((t, r) => t + r.montant, 0);
+  return { cotisation: sum("Cotisation Aziccul"), versement: sum("Aziccul") };
+}
 async function argentEnCaisseReel(pid) {
   if (!pid) return null;
   const [cl] = await q(sb.from("clotures").select("jour").eq("pole_id", pid).eq("statut", "fermee").order("jour", { ascending: false }).limit(1));
@@ -5320,11 +5329,12 @@ function perID() {
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
   const [mdu, mau] = perMI();
-  const [T, Ty, mcSolde, cashReel] = await Promise.all([
+  const [T, Ty, mcSolde, cashReel, aziccul] = await Promise.all([
     syntheseGenerale(today(), today(), pi.id),
     syntheseGenerale(hier, hier, pi.id),
     soldeMainCourante(mdu, mau, pi.id).catch(() => null),
     argentEnCaisseReel(pi.id).catch(() => null),
+    totauxAziccul(pi.id).catch(() => ({ cotisation: 0, versement: 0 })),
   ]);
   const delta = T.solde - Ty.solde, bon = delta >= 0;
   const l = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
@@ -5336,7 +5346,11 @@ async function blocInstitutAccueil(pi) {
       ${l("Investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
       ${T.cot ? l("Cotisations (épargne)", T.cot, "neg") : ""}
-      ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
+      ${T.vers ? l("Versé à la banque", T.vers) : ""}
+      ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
+      ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
+      ${l("Total Cotisation Aziccul", aziccul.cotisation)}
+      ${l("Total versement Aziccul", aziccul.versement)}</dl>
       ${mcSolde !== null ? `<div class="solde" style="border-color:var(--accent)"><span><b>TOTAL MAIN COURANTE (du ${dateFr(mdu)} au ${dateFr(mau)})</b></span><span class="money"><b>${fcfa(mcSolde)}</b></span></div>` : ""}
       <div class="solde"><span>Argent en caisse (espèces en main, à l'instant)</span><span class="money">${fcfa(cashReel !== null ? cashReel : T.cash)}</span></div></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
