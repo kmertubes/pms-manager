@@ -5127,6 +5127,8 @@ async function vBarRes() {
   S.caisseSel = c.id;
   await vCaisse();
   const seg = $("#main .seg"); if (seg) seg.remove();
+  let bj = ""; try { bj = await blocJournee(c); } catch (e) {}
+  $("#main").insertAdjacentHTML("afterbegin", bj);
   $("#main").insertAdjacentHTML("beforeend", await blocMainCouranteBar(c));
 }
 function perMB() {
