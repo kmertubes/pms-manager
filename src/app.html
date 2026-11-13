@@ -4685,7 +4685,7 @@ function poste(v) {
 const prestaDe = v => (v?.prestataire || "").trim() || (v?.vendeur ? nomMembre(v.vendeur) : "—");
 
 async function rapportMainCourante(d0, d1, pid) {
-  const [D, aziccul] = await Promise.all([donneesMainCourante(d0, d1, pid), totauxAziccul(pid).catch(() => ({ cotisation: 0, versement: 0 }))]);
+  const [D, aziccul, { cb: cbBar, lots: lotsBar }] = await Promise.all([donneesMainCourante(d0, d1, pid), totauxAziccul(pid).catch(() => ({ cotisation: 0, versement: 0 })), stockBarInstitut(pid, d0, d1)]);
   const jours = []; for (let j = d0; j <= d1; j = ajoutJours(j, 1)) jours.push(j);
   const parSem = jours.length > 8;
   const buckets = parSem ? (() => { const b = []; for (let i = 0; i < jours.length; i += 7) b.push(jours.slice(i, i + 7)); return b; })() : jours.map(j => [j]);
@@ -4820,6 +4820,23 @@ async function rapportMainCourante(d0, d1, pid) {
     d.text(a, M + 10, y, { size: 12, bold: true, color: ENCRE }); d.text(mN0(v) + " FCFA", W - M - 10, y, { size: 12, bold: true, color: vert ? KM.vert : ENCRE, align: "right" });
     y += 38;
   });
+
+  /* page 4 : tableau du bar (stock entrant en provenance de la Résidence) */
+  if (cbBar) {
+    nouvelle();
+    titre("TABLEAU DU BAR — STOCK ENTRANT (en provenance de la Résidence)"); y += 6;
+    if (!lotsBar.length) { d.text("Aucune entrée de stock sur cette période.", M, y, { size: 9, color: GRIS }); }
+    else {
+      const colsB = [{ w: 95 }, { w: 95 }, { w: 120 }, { w: 120 }, { w: 121 }];
+      const totBout = lotsBar.reduce((t, l) => t + l.bouteilles, 0), totCout = lotsBar.reduce((t, l) => t + l.cout, 0), totVente = lotsBar.reduce((t, l) => t + l.vente, 0);
+      tableau(colsB, ["STOCK DU", "BOUTEILLES", "COÛT ENTRANT FCFA", "VENTE PRÉV. FCFA", "RESTE EN STOCK FCFA"],
+        [...lotsBar.map(l => ({ cells: [ddmmyyyy(l.date), nb(l.bouteilles, 0), mN0(l.cout), mN0(l.vente), mN0(l.reste)] })),
+         { cells: ["TOTAL", nb(totBout, 0), mN0(totCout), mN0(totVente), "—"], total: true }], { pill: true, rh: 24 });
+      y += 14;
+      d.text("« Reste en stock » = stock actuel des produits de ce lot × prix de vente Institut (valeur globale, non isolée par lot).", M, y, { size: 7, color: GRIS });
+    }
+  }
+
   d.pages.forEach((p, i) => { d.c = p; d.text(String(i + 1), W - M, d.H - 18, { size: 9, color: GRIS, align: "right" }); });
   const nom = `Rapport-PDG_Institut_${d0}_${d1}.pdf`;
   const u = URL.createObjectURL(d.blob()), a = document.createElement("a");
@@ -5401,6 +5418,44 @@ function perID() {
   const du = S.idDu || lundi(today()), au = S.idAu || today();
   return du <= au ? [du, au] : [au, du];
 }
+/* ---------- Stock bar de l'Institut : entrées en provenance de la Résidence, par achat ---------- */
+async function stockBarInstitut(pid, du, au) {
+  const cb = S.caisses.find(c => c.type === "bar" && c.pole_id === pid);
+  if (!cb) return { cb: null, lots: [] };
+  const achats = await q(sb.from("achats").select("id,date_achat,fournisseur").eq("caisse_id", cb.id).eq("annule", false).gte("date_achat", du).lte("date_achat", au).order("date_achat"));
+  if (!achats.length) return { cb, lots: [] };
+  const aids = achats.map(a => a.id);
+  const [lignes, prods] = await Promise.all([
+    q(sb.from("achat_lignes").select("achat_id,article_id,quantite,prix_total").in("achat_id", aids)),
+    q(sb.from("produits").select("id,recettes(article_id,quantite),formules(prix,actif)").eq("caisse_id", cb.id).eq("archive", false)),
+  ]);
+  const artIds = [...new Set(lignes.map(l => l.article_id))];
+  const stocks = artIds.length ? await q(sb.from("articles_stock").select("id,stock").in("id", artIds)) : [];
+  const prixVente = {};
+  prods.forEach(p => { const f = (p.formules || []).find(x => x.actif); if (!f) return;
+    (p.recettes || []).forEach(r => { if (r.quantite > 0) prixVente[r.article_id] = f.prix / r.quantite; }); });
+  const stockActuel = {}; stocks.forEach(s => stockActuel[s.id] = s.stock || 0);
+  const lots = achats.map(a => {
+    const ls = lignes.filter(l => l.achat_id === a.id);
+    const bouteilles = ls.reduce((t, l) => t + (l.quantite || 0), 0);
+    const cout = ls.reduce((t, l) => t + (l.prix_total || 0), 0);
+    const vente = ls.reduce((t, l) => t + (l.quantite || 0) * (prixVente[l.article_id] || 0), 0);
+    const reste = [...new Set(ls.map(l => l.article_id))].reduce((t, id) => t + (stockActuel[id] || 0) * (prixVente[id] || 0), 0);
+    return { date: a.date_achat, fournisseur: a.fournisseur, bouteilles, cout, vente, reste };
+  });
+  return { cb, lots };
+}
+function renderStockBarInstitut(cb, lots) {
+  if (!cb) return "";
+  const l2 = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
+  return `<div class="sec">Stock bar – entrées en provenance de la Résidence</div>` +
+    (lots.length ? lots.map(l => `<div class="card"><div class="title">Stock du ${ddmmyyyy(l.date)}${l.fournisseur ? " · " + esc(l.fournisseur) : ""}</div><dl class="kv">
+      <dt>Bouteilles entrées</dt><dd class="money">${nb(l.bouteilles, 0)}</dd>
+      ${l2("Coût des boissons entrantes", l.cout)}
+      ${l2("Vente prévisionnelle du stock entrant", l.vente)}
+      ${l2("Reste en stock (valeur prévisionnelle vendue)", l.reste)}
+    </dl></div>`).join("") : `<div class="empty">Aucune entrée de stock sur cette période.</div>`);
+}
 async function blocInstitutAccueil(pi) {
   const hier = ajoutJours(today(), -1);
   const [T, Ty, aziccul] = await Promise.all([
@@ -5430,10 +5485,12 @@ async function blocInstitutAccueil(pi) {
       <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd></dl></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   const [du, au] = perID();
+  const { cb: cbBar, lots: lotsBar } = await stockBarInstitut(pi.id, du, au);
   return `${synth}
     <div class="sec">Performance et dépenses de la semaine</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="id-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="id-au" value="${au}" max="${today()}"></label></div>
-    ${await blocPerformanceInstitut(pi, du, au)}`;
+    ${await blocPerformanceInstitut(pi, du, au)}
+    ${renderStockBarInstitut(cbBar, lotsBar)}`;
 }
 function matriceInstitut(titre, jours, data) {
   const ks = Object.keys(data);
