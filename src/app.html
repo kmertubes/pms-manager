@@ -4685,7 +4685,7 @@ function poste(v) {
 const prestaDe = v => (v?.prestataire || "").trim() || (v?.vendeur ? nomMembre(v.vendeur) : "—");
 
 async function rapportMainCourante(d0, d1, pid) {
-  const D = await donneesMainCourante(d0, d1, pid);
+  const [D, aziccul] = await Promise.all([donneesMainCourante(d0, d1, pid), totauxAziccul(pid).catch(() => ({ cotisation: 0, versement: 0 }))]);
   const jours = []; for (let j = d0; j <= d1; j = ajoutJours(j, 1)) jours.push(j);
   const parSem = jours.length > 8;
   const buckets = parSem ? (() => { const b = []; for (let i = 0; i < jours.length; i += 7) b.push(jours.slice(i, i + 7)); return b; })() : jours.map(j => [j]);
@@ -4812,7 +4812,7 @@ async function rapportMainCourante(d0, d1, pid) {
   });
   y += 78;
   const fin = [[`REPORT AU ${ddmm(d0)} :`, D.report], ["TOTAL RECETTES :", recT], ...(appT ? [["APPORTS EN CAISSE :", appT]] : []), ["TOTAL GÉNÉRAL :", D.report + recT + appT],
-    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS :", nat("cotisation"), true], ["TOTAL ÉPARGNE :", nat("epargne"), true],
+    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS :", aziccul.cotisation, true], ["TOTAL ÉPARGNE :", aziccul.versement, true],
     ...(vers ? [["VERSEMENTS À LA BANQUE :", vers]] : []), ["SOLDE :", solde]];
   fin.forEach(([a, v, vert], i) => {
     const der = i === fin.length - 1;
