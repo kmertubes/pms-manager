@@ -4820,13 +4820,13 @@ async function rapportMainCourante(d0, d1, pid) {
     titre("TABLEAU DU BAR — STOCK ENTRANT (en provenance de la Résidence)"); y += 6;
     if (!lotsBar.length) { d.text("Aucune entrée de stock sur cette période.", M, y, { size: 9, color: GRIS }); }
     else {
-      const colsB = [{ w: 95 }, { w: 95 }, { w: 120 }, { w: 120 }, { w: 121 }];
-      const totBout = lotsBar.reduce((t, l) => t + l.bouteilles, 0), totCout = lotsBar.reduce((t, l) => t + l.cout, 0), totVente = lotsBar.reduce((t, l) => t + l.vente, 0);
-      tableau(colsB, ["STOCK DU", "BOUTEILLES", "COÛT ENTRANT FCFA", "VENTE PRÉV. FCFA", "RESTE EN STOCK FCFA"],
-        [...lotsBar.map(l => ({ cells: [ddmmyyyy(l.date), nb(l.bouteilles, 0), mN0(l.cout), mN0(l.vente), mN0(l.reste)] })),
-         { cells: ["TOTAL", nb(totBout, 0), mN0(totCout), mN0(totVente), "—"], total: true }], { pill: true, rh: 24 });
+      const colsB = [{ w: 85 }, { w: 80 }, { w: 100 }, { w: 100 }, { w: 95 }, { w: 91 }];
+      const totBout = lotsBar.reduce((t, l) => t + l.bouteilles, 0), totCout = lotsBar.reduce((t, l) => t + l.cout, 0), totVente = lotsBar.reduce((t, l) => t + l.vente, 0), totVendu = lotsBar.reduce((t, l) => t + l.vendu, 0);
+      tableau(colsB, ["STOCK DU", "BOUTEILLES", "PRIX D'ACHAT FCFA", "VENTE PRÉV. FCFA", "VENDU FCFA", "RESTE EN STOCK FCFA"],
+        [...lotsBar.map(l => ({ cells: [ddmmyyyy(l.date), nb(l.bouteilles, 0), mN0(l.cout), mN0(l.vente), mN0(l.vendu), mN0(l.reste)] })),
+         { cells: ["TOTAL", nb(totBout, 0), mN0(totCout), mN0(totVente), mN0(totVendu), "—"], total: true }], { pill: true, rh: 24 });
       y += 14;
-      d.text("« Reste en stock » = stock actuel des produits de ce lot × prix de vente Institut (valeur globale, non isolée par lot).", M, y, { size: 7, color: GRIS });
+      d.text("« Vendu » = recette déjà réalisée sur la période ; « Reste en stock » = stock actuel × prix de vente Institut (valeurs globales, non isolées par lot).", M, y, { size: 7, color: GRIS });
     }
   }
 
@@ -5435,21 +5435,28 @@ function perID() {
 }
 /* ---------- Stock bar de l'Institut : entrées en provenance de la Résidence, par achat ---------- */
 async function stockBarInstitut(pid, du, au) {
-  const vide = { bouteilles: 0, cout: 0, vente: 0, reste: 0 };
+  const vide = { bouteilles: 0, cout: 0, vente: 0, vendu: 0, reste: 0 };
   const cb = S.caisses.find(c => c.type === "bar" && c.pole_id === pid);
   if (!cb) return { cb: null, lots: [], total: vide };
-  const [achats, prods, allStocks] = await Promise.all([
+  const t0 = aDouala(du, T_JOUR).toISOString(), t1 = aDouala(ajoutJours(au, 1), T_JOUR).toISOString();
+  const [achats, prods, allStocks, ventesBar] = await Promise.all([
     q(sb.from("achats").select("id,date_achat,fournisseur").eq("caisse_id", cb.id).eq("annule", false).gte("date_achat", du).lte("date_achat", au).order("date_achat")),
     q(sb.from("produits").select("id,recettes(article_id,quantite),formules(prix,actif)").eq("caisse_id", cb.id).eq("archive", false)),
     q(sb.from("articles_stock").select("id,stock").eq("caisse_id", cb.id).eq("archive", false)),
+    q(sb.from("ventes").select("statut,vente_lignes(produit_id,quantite,prix_unitaire)").eq("caisse_id", cb.id).neq("statut", "annulee").gte("created_at", t0).lt("created_at", t1)),
   ]);
-  const prixVente = {};
+  const prixVente = {}, articleDeProduit = {};
   prods.forEach(p => { const f = (p.formules || []).find(x => x.actif); if (!f) return;
-    (p.recettes || []).forEach(r => { if (r.quantite > 0) prixVente[r.article_id] = f.prix / r.quantite; }); });
+    (p.recettes || []).forEach(r => { if (r.quantite > 0) { prixVente[r.article_id] = f.prix / r.quantite; articleDeProduit[p.id] = r.article_id; } }); });
+  /* valeur déjà vendue (recette réalisée) par article, sur la période du rapport */
+  const venduParArticle = {};
+  ventesBar.forEach(v => (v.vente_lignes || []).forEach(l => { const aId = articleDeProduit[l.produit_id]; if (!aId) return;
+    venduParArticle[aId] = (venduParArticle[aId] || 0) + (Number(l.quantite) || 0) * (Number(l.prix_unitaire) || 0); }));
+  const venduGlobal = Object.values(venduParArticle).reduce((t, v) => t + v, 0);
   const stockActuel = {}; allStocks.forEach(s => stockActuel[s.id] = s.stock || 0);
   /* valeur du stock actuel, globale (toute la caisse Bar) : n'est pas isolée par lot, donc calculée une seule fois */
   const resteGlobal = allStocks.reduce((t, s) => t + (s.stock || 0) * (prixVente[s.id] || 0), 0);
-  if (!achats.length) return { cb, lots: [], total: { ...vide, reste: resteGlobal } };
+  if (!achats.length) return { cb, lots: [], total: { ...vide, vendu: venduGlobal, reste: resteGlobal } };
   const aids = achats.map(a => a.id);
   const lignes = await q(sb.from("achat_lignes").select("achat_id,article_id,quantite,prix_total").in("achat_id", aids));
   const lots = achats.map(a => {
@@ -5457,10 +5464,12 @@ async function stockBarInstitut(pid, du, au) {
     const bouteilles = ls.reduce((t, l) => t + (l.quantite || 0), 0);
     const cout = ls.reduce((t, l) => t + (l.prix_total || 0), 0);
     const vente = ls.reduce((t, l) => t + (l.quantite || 0) * (prixVente[l.article_id] || 0), 0);
-    const reste = [...new Set(ls.map(l => l.article_id))].reduce((t, id) => t + (stockActuel[id] || 0) * (prixVente[id] || 0), 0);
-    return { date: a.date_achat, fournisseur: a.fournisseur, bouteilles, cout, vente, reste };
+    const artsLot = [...new Set(ls.map(l => l.article_id))];
+    const vendu = artsLot.reduce((t, id) => t + (venduParArticle[id] || 0), 0);
+    const reste = artsLot.reduce((t, id) => t + (stockActuel[id] || 0) * (prixVente[id] || 0), 0);
+    return { date: a.date_achat, fournisseur: a.fournisseur, bouteilles, cout, vente, vendu, reste };
   });
-  const total = { bouteilles: lots.reduce((t, l) => t + l.bouteilles, 0), cout: lots.reduce((t, l) => t + l.cout, 0), vente: lots.reduce((t, l) => t + l.vente, 0), reste: resteGlobal };
+  const total = { bouteilles: lots.reduce((t, l) => t + l.bouteilles, 0), cout: lots.reduce((t, l) => t + l.cout, 0), vente: lots.reduce((t, l) => t + l.vente, 0), vendu: venduGlobal, reste: resteGlobal };
   return { cb, lots, total };
 }
 function renderStockBarInstitut(cb, lots) {
@@ -5500,13 +5509,13 @@ async function blocInstitutAccueil(pi) {
       ${T.epargne ? l("Épargne", T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
-      ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
-      <dt>Total Cotisation Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.cotisation)}</b></dd>
-      <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd>
       ${cbBar ? `<dt><b>Bar – bouteilles entrées (${ddmm(du)} – ${ddmm(au)})</b></dt><dd class="money"><b>${nb(totalBar.bouteilles, 0)}</b></dd>
       ${l("Bar – coût d'entrée (prix de revient)", totalBar.cout)}
       ${l("Bar – valeur de vente du stock entrant", totalBar.vente)}
-      ${l("Bar – valeur du stock restant (actuel)", totalBar.reste)}` : ""}</dl></div>
+      ${l("Bar – valeur du stock restant (actuel)", totalBar.reste)}` : ""}
+      ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
+      <dt>Total Cotisation Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.cotisation)}</b></dd>
+      <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd></dl></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   return `${synth}
     <div class="sec">Performance et dépenses de la semaine</div>
