@@ -4812,12 +4812,12 @@ async function rapportMainCourante(d0, d1, pid) {
   });
   y += 78;
   const fin = [[`REPORT AU ${ddmm(d0)} :`, D.report], ["TOTAL RECETTES :", recT], ...(appT ? [["APPORTS EN CAISSE :", appT]] : []), ["TOTAL GÉNÉRAL :", D.report + recT + appT],
-    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS :", nat("cotisation")], ["TOTAL ÉPARGNE :", nat("epargne")],
+    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS :", nat("cotisation"), true], ["TOTAL ÉPARGNE :", nat("epargne"), true],
     ...(vers ? [["VERSEMENTS À LA BANQUE :", vers]] : []), ["SOLDE :", solde]];
-  fin.forEach(([a, v], i) => {
+  fin.forEach(([a, v, vert], i) => {
     const der = i === fin.length - 1;
     if (der) d.rect(M, y - 17, W - 2 * M, 27, BEIGE);
-    d.text(a, M + 10, y, { size: 12, bold: true, color: ENCRE }); d.text(mN0(v) + " FCFA", W - M - 10, y, { size: 12, bold: true, color: ENCRE, align: "right" });
+    d.text(a, M + 10, y, { size: 12, bold: true, color: ENCRE }); d.text(mN0(v) + " FCFA", W - M - 10, y, { size: 12, bold: true, color: vert ? KM.vert : ENCRE, align: "right" });
     y += 38;
   });
   d.pages.forEach((p, i) => { d.c = p; d.text(String(i + 1), W - M, d.H - 18, { size: 9, color: GRIS, align: "right" }); });
