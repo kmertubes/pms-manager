@@ -4922,7 +4922,8 @@ async function syntheseCaisse(d0, d1, pid) {
 async function syntheseGenerale(d0, d1, pole) {
   const ps = pole ? [pole] : S.poles.map(p => p.id), L = await Promise.all(ps.map(p => syntheseCaisse(d0, d1, p)));
   const T = L.reduce((t, z) => { Object.keys(z).forEach(k => t[k] = (t[k] || 0) + z[k]); return t; }, {});
-  T.general = T.report + T.rec + T.app; T.dep = T.inv + T.fon + T.cot + T.epargne; T.solde = T.general - T.dep - T.vers; T.cash = T.solde - T.om - T.momo - T.aut;
+  T.general = T.report + T.reportOm + T.reportMomo + T.rec + T.app; T.dep = T.inv + T.fon + T.cot + T.epargne; T.solde = T.general - T.dep - T.vers;
+  T.cash = T.solde - T.reportOm - T.reportMomo - T.om - T.momo - T.aut;
   return T;
 }
 /* Argent en caisse "à l'instant" : contrairement à syntheseGenerale(today(),today()) qui ne compte
