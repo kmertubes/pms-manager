@@ -4901,15 +4901,17 @@ document.head.insertAdjacentHTML("beforeend", `<style>.synth .kv dd{font-variant
 @media(max-width:420px){.caisses4{grid-template-columns:repeat(2,1fr)}}</style>`);
 async function syntheseCaisse(d0, d1, pid) {
   const ids = S.caisses.filter(c => c.pole_id === pid).map(c => c.id);
-  const z = { report: 0, rec: 0, om: 0, momo: 0, aut: 0, app: 0, inv: 0, fon: 0, cot: 0, epargne: 0, vers: 0 };
+  const z = { report: 0, reportOm: 0, reportMomo: 0, rec: 0, om: 0, momo: 0, aut: 0, app: 0, inv: 0, fon: 0, cot: 0, epargne: 0, vers: 0 };
   if (!ids.length) return z;
   const t0 = aDouala(d0, T_JOUR).toISOString(), t1 = aDouala(ajoutJours(d1, 1), T_JOUR).toISOString();
   const [pa, mv, cl] = await Promise.all([
     tout(() => sb.from("paiements").select("montant,sens,moyen").in("caisse_id", ids).eq("annule", false).gte("created_at", t0).lt("created_at", t1)),
     tout(() => sb.from("mouvements_caisse").select("type,montant,nature").in("caisse_id", ids).eq("annule", false).gte("created_at", t0).lt("created_at", t1)),
-    q(sb.from("clotures").select("especes_comptees").eq("pole_id", pid).eq("statut", "fermee").lt("jour", d0).order("jour", { ascending: false }).limit(1)),
+    q(sb.from("clotures").select("especes_comptees,solde_om,solde_momo").eq("pole_id", pid).eq("statut", "fermee").lt("jour", d0).order("jour", { ascending: false }).limit(1)),
   ]);
   z.report = cl[0]?.especes_comptees || 0;
+  z.reportOm = cl[0]?.solde_om || 0;
+  z.reportMomo = cl[0]?.solde_momo || 0;
   pa.forEach(p => { const m = p.montant * (p.sens || 1); z.rec += m; if (p.moyen === "orange_money") z.om += m; else if (p.moyen === "mtn_momo") z.momo += m; else if (p.moyen !== "especes") z.aut += m; });
   mv.forEach(m => { if (m.type === "apport") z.app += m.montant; else if (m.type === "versement_banque") z.vers += m.montant;
     else { const n = m.nature || "fonctionnement"; if (n === "investissement") z.inv += m.montant; else if (n === "cotisation") z.cot += m.montant; else if (n === "epargne") z.epargne += m.montant; else z.fon += m.montant; } });
@@ -5405,8 +5407,12 @@ async function blocInstitutAccueil(pi) {
   ]);
   const delta = T.solde - Ty.solde, bon = delta >= 0;
   const l = (a, v, cls = "") => `<dt>${a}</dt><dd class="money ${cls}">${fcfa(v)}</dd>`;
+  const totReport = T.report + T.reportOm + T.reportMomo;
   const synth = `<div class="card synth"><dl class="kv">
-      ${l(`Report au ${dateFr(today())}`, T.report)}
+      ${l(`Report espèces au ${dateFr(today())}`, T.report)}
+      ${l(`Report Orange Money au ${dateFr(today())}`, T.reportOm)}
+      ${l(`Report MoMo au ${dateFr(today())}`, T.reportMomo)}
+      ${l(`<b>Total report de caisse au ${dateFr(today())}</b>`, totReport)}
       ${l("Recettes du jour", T.rec)}
       ${T.app ? l("Apports en caisse", T.app) : ""}
       ${l("<b>Total général</b>", T.general)}
