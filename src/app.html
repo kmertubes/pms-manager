@@ -5425,8 +5425,8 @@ async function blocInstitutAccueil(pi) {
       ${T.vers ? l("Versé à la banque", T.vers) : ""}
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
       ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
-      ${l("Total Cotisation Aziccul", aziccul.cotisation)}
-      ${l("Total Épargne Aziccul", aziccul.versement)}</dl></div>
+      <dt>Total Cotisation Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.cotisation)}</b></dd>
+      <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd></dl></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   const [du, au] = perID();
   return `${synth}
