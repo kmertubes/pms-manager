@@ -4655,11 +4655,13 @@ async function donneesMainCourante(d0, d1, pid) {
   const [pa, mv, cl] = await Promise.all([
     tout(() => sb.from("paiements").select("id,montant,sens,moyen,vente_id,created_at").in("caisse_id", ids).eq("annule", false).gte("created_at", t0).lt("created_at", t1).order("created_at")),
     tout(() => sb.from("mouvements_caisse").select("id,type,montant,libelle,beneficiaire,categorie,nature,employe,created_at").in("caisse_id", ids).eq("annule", false).gte("created_at", t0).lt("created_at", t1).order("created_at")),
-    q(sb.from("clotures").select("jour,especes_comptees").eq("pole_id", pid).eq("statut", "fermee").lt("jour", d0).order("jour", { ascending: false }).limit(1)),
+    q(sb.from("clotures").select("jour,especes_comptees,solde_om,solde_momo").eq("pole_id", pid).eq("statut", "fermee").lt("jour", d0).order("jour", { ascending: false }).limit(1)),
   ]);
   /* comble automatiquement tout trou entre la dernière clôture et d0 (jours jamais clôturés) pour que
-     le report reflète toujours la réalité, même sans clôture quotidienne régulière */
-  let report = cl[0]?.especes_comptees || 0;
+     le report reflète toujours la réalité, même sans clôture quotidienne régulière.
+     Le report inclut espèces + solde Orange Money + solde MoMo déclarés à la dernière clôture :
+     cet argent existe bel et bien, même s'il n'est pas dans le tiroir-caisse physique. */
+  let report = (cl[0]?.especes_comptees || 0) + (cl[0]?.solde_om || 0) + (cl[0]?.solde_momo || 0);
   const gapDebut = cl[0]?.jour ? ajoutJours(cl[0].jour, 1) : null;
   if (gapDebut && gapDebut < d0) {
     const gt0 = aDouala(gapDebut, T_JOUR).toISOString();
