@@ -4662,20 +4662,23 @@ async function donneesMainCourante(d0, d1, pid) {
      Le report inclut espèces + solde Orange Money + solde MoMo déclarés à la dernière clôture :
      cet argent existe bel et bien, même s'il n'est pas dans le tiroir-caisse physique. */
   let report = (cl[0]?.especes_comptees || 0) + (cl[0]?.solde_om || 0) + (cl[0]?.solde_momo || 0);
+  let reportOm = cl[0]?.solde_om || 0, reportMomo = cl[0]?.solde_momo || 0;
   const gapDebut = cl[0]?.jour ? ajoutJours(cl[0].jour, 1) : null;
   if (gapDebut && gapDebut < d0) {
     const gt0 = aDouala(gapDebut, T_JOUR).toISOString();
     const [gpa, gmv] = await Promise.all([
-      tout(() => sb.from("paiements").select("montant,sens").in("caisse_id", ids).eq("annule", false).gte("created_at", gt0).lt("created_at", t0)),
+      tout(() => sb.from("paiements").select("montant,sens,moyen").in("caisse_id", ids).eq("annule", false).gte("created_at", gt0).lt("created_at", t0)),
       tout(() => sb.from("mouvements_caisse").select("type,montant").in("caisse_id", ids).eq("annule", false).gte("created_at", gt0).lt("created_at", t0)),
     ]);
     const sortieG = m => ["depense", "retrait", "versement_banque"].includes(m.type);
     report += gpa.reduce((t, p) => t + p.montant * (p.sens || 1), 0) + gmv.filter(m => m.type === "apport").reduce((t, m) => t + m.montant, 0) - gmv.filter(sortieG).reduce((t, m) => t + m.montant, 0);
+    reportOm += gpa.filter(p => p.moyen === "orange_money").reduce((t, p) => t + p.montant * (p.sens || 1), 0);
+    reportMomo += gpa.filter(p => p.moyen === "mtn_momo").reduce((t, p) => t + p.montant * (p.sens || 1), 0);
   }
   const vids = [...new Set(pa.map(p => p.vente_id).filter(Boolean))], ve = {};
   for (let i = 0; i < vids.length; i += 100)
     (await q(sb.from("ventes").select("id,caisse_id,prestataire,vendeur,vente_lignes(quantite,prix_unitaire,detail,produits(nom),formules(nom))").in("id", vids.slice(i, i + 100)))).forEach(v => ve[v.id] = v);
-  return { pa, mv, ve, report };
+  return { pa, mv, ve, report, reportOm, reportMomo };
 }
 
 function poste(v) {
@@ -4737,9 +4740,9 @@ async function rapportMainCourante(d0, d1, pid) {
     if (depEmp(m)) { const k = Object.keys(perf).find(x => x.toLowerCase() === empDe(m).toLowerCase()) || empDe(m); (depE[k] ||= Array(buckets.length).fill(0))[b] += m.montant; }
     else { const k = m.type === "versement_banque" ? "Versement banque" : (m.categorie || m.libelle || "Divers").trim(); (depI[k] ||= Array(buckets.length).fill(0))[b] += m.montant; } });
 
-  /* caisses générales */
+  /* caisses générales : OM/MoMo incluent le report (solde déjà existant mais pas en espèces), Cash = le reste (solde - D.report + ces reports + les flux de caisse) */
   const mm = mo => D.pa.filter(p => p.moyen === mo).reduce((t, p) => t + p.montant * (p.sens || 1), 0);
-  const om = mm("orange_money"), momo = mm("mtn_momo"), cash = solde - om - momo;
+  const om = D.reportOm + mm("orange_money"), momo = D.reportMomo + mm("mtn_momo"), cash = solde - om - momo;
   const nat = n => deps.filter(m => m.type !== "versement_banque" && (m.nature || "fonctionnement") === n).reduce((t, m) => t + m.montant, 0);
   const vers = deps.filter(m => m.type === "versement_banque").reduce((t, m) => t + m.montant, 0);
 
