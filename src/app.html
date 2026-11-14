@@ -4970,7 +4970,7 @@ async function totauxAziccul(pid) {
   if (!pid) return { cotisation: 0, versement: 0 };
   const ids = S.caisses.filter(c => c.pole_id === pid && c.type !== "hebergement").map(c => c.id);
   if (!ids.length) return { cotisation: 0, versement: 0 };
-  const rows = await tout(() => sb.from("mouvements_caisse").select("nature,montant").in("caisse_id", ids).eq("annule", false).or("categorie.ilike.%aziccul%,libelle.ilike.%aziccul%"));
+  const rows = await tout(() => sb.from("mouvements_caisse").select("nature,montant").in("caisse_id", ids).eq("annule", false).in("nature", ["cotisation", "epargne"]));
   const sum = n => rows.filter(r => r.nature === n).reduce((t, r) => t + r.montant, 0);
   return { cotisation: sum("cotisation"), versement: sum("epargne") };
 }
