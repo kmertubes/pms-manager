@@ -5355,7 +5355,7 @@ async function vVenteInstitut() {
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
     ${bj}
     <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").reduce((t, v) => t + ((v.vente_lignes && v.vente_lignes.length) ? v.vente_lignes.reduce((s, l) => s + (Number(l.quantite) || 1), 0) : 1), 0)}</b><span>vente(s) aujourd'hui</span></div></div>
-    ${argent !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(argent.cash)}</b><span>Argent en caisse (espèces, à l'instant)</span></div><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(argent.solde)}</b><span>Report de la journée suivante (espèces + OM + MoMo)</span></div></div>` : ""}
+    ${argent !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(argent.solde)}</b><span>Argent en main (espèces + OM + MoMo) · à annoncer à la fermeture</span></div></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
     <div class="sec">Ventes du jour</div>
     ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
