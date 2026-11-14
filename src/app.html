@@ -5000,7 +5000,7 @@ vCaisseGen = async () => {
       ${l("Total investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Total fonctionnement", T.fon, T.fon ? "neg" : "")}
       ${l("Total cotisations", T.cot, T.cot ? "neg" : "")}
-      ${T.epargne ? l("Total épargne", T.epargne, "neg") : ""}
+      ${T.epargne ? l(`Total épargne (${dateFr(g.du)} – ${dateFr(g.au)})`, T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
       <div class="solde"><span>Solde au ${dateFr(g.au)}</span><span class="money">${fcfa(T.solde)}</span></div></div>
     <div class="sec">Caisses générales au ${esc(dateFr(g.au))}</div>
@@ -5521,7 +5521,7 @@ async function blocInstitutAccueil(pi) {
       ${l("Investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
       ${T.cot ? l("Cotisations", T.cot, "neg") : ""}
-      ${T.epargne ? l("Épargne", T.epargne, "neg") : ""}
+      ${T.epargne ? l(`Épargne du ${dateFr(today())}`, T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
       ${cbBar ? `<dt><b>Bar – bouteilles entrées (${ddmm(du)} – ${ddmm(au)})</b></dt><dd class="money"><b>${nb(totalBar.bouteilles, 0)}</b></dd>
