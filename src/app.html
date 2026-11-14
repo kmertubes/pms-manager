@@ -4979,7 +4979,9 @@ async function argentEnCaisseReel(pid) {
   let du = cl?.jour ? ajoutJours(cl.jour, 1) : "2000-01-01";
   if (du > today()) du = today();
   const Z = await syntheseGenerale(du, today(), pid);
-  return Z.cash;
+  /* Z.solde = espèces + OM + MoMo encore en caisse à l'instant : c'est exactement ce qui sera
+     reporté à l'ouverture de la journée suivante si l'on ferme maintenant. */
+  return { cash: Z.cash, solde: Z.solde };
 }
 const _vCaisseGen28 = vCaisseGen;
 vCaisseGen = async () => {
@@ -5348,12 +5350,12 @@ async function vVenteInstitut() {
   ]);
   const paye = id => enc.filter(p => p.vente_id === id).reduce((t, p) => t + p.montant, 0);
   const total = enc.reduce((t, p) => t + p.montant, 0);
-  let cashReel; try { cashReel = await argentEnCaisseReel(pi?.id); } catch (e) { cashReel = null; }
+  let argent; try { argent = await argentEnCaisseReel(pi?.id); } catch (e) { argent = null; }
   let bj = ""; try { bj = await blocJournee(c); } catch (e) {}
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
     ${bj}
     <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").reduce((t, v) => t + ((v.vente_lignes && v.vente_lignes.length) ? v.vente_lignes.reduce((s, l) => s + (Number(l.quantite) || 1), 0) : 1), 0)}</b><span>vente(s) aujourd'hui</span></div></div>
-    ${cashReel !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(cashReel)}</b><span>Argent en caisse (espèces, à l'instant)</span></div></div>` : ""}
+    ${argent !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(argent.cash)}</b><span>Argent en caisse (espèces, à l'instant)</span></div><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(argent.solde)}</b><span>Report de la journée suivante (espèces + OM + MoMo)</span></div></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
     <div class="sec">Ventes du jour</div>
     ${ve.map(v => { const reste = v.total - paye(v.id); return `<div class="card tap" data-act="vente" data-id="${v.id}"><div class="line"><div class="grow">
