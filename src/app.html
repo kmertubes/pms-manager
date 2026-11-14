@@ -930,7 +930,7 @@ async function vCaisse() {
   const total = enc.reduce((t, p) => t + p.montant, 0);
   const mins = c.type === "piscine" ? await blocMinuteurs("vente") : "";
   $("#main").innerHTML = `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>
-    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
+    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").reduce((t, v) => t + ((v.vente_lignes && v.vente_lignes.length) ? v.vente_lignes.reduce((s, l) => s + (Number(l.quantite) || 1), 0) : 1), 0)}</b><span>vente(s) aujourd'hui</span></div></div>
     ${ecrit() ? `<button class="btn full" data-act="newvente">＋ ${c.type === "restaurant_mobile" ? "Nouvelle commande à livrer" : "Nouvelle vente"}</button>` : ""}
     ${mins}
     <div class="sec">Ventes du jour</div>
@@ -5219,7 +5219,7 @@ async function vRestaurantRes() {
   const minDepuis = ts => Math.round((Date.now() - new Date(ts)) / 60000);
   $("#main").innerHTML = `
     <div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>
-    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
+    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").reduce((t, v) => t + ((v.vente_lignes && v.vente_lignes.length) ? v.vente_lignes.reduce((s, l) => s + (Number(l.quantite) || 1), 0) : 1), 0)}</b><span>vente(s) aujourd'hui</span></div></div>
     ${ecrit() ? `<button class="btn full" data-act="newvente">＋ ${c.type === "restaurant_mobile" ? "Nouvelle commande à livrer" : "Nouvelle vente"}</button>` : ""}
     <div class="sec">Commandes en cours (${veCuis.length})</div>
     ${veCuis.map(v => { const lv = Array.isArray(v.livraisons) ? v.livraisons[0] : v.livraisons; const m = minDepuis(v.created_at);
@@ -5352,7 +5352,7 @@ async function vVenteInstitut() {
   let bj = ""; try { bj = await blocJournee(c); } catch (e) {}
   $("#main").innerHTML = `${cs.length > 1 ? `<div class="seg">${cs.map(x => `<button data-act="caisse" data-id="${x.id}" class="${x.id === c.id ? "on" : ""}">${esc(x.nom)}</button>`).join("")}</div>` : ""}
     ${bj}
-    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").length}</b><span>vente(s) aujourd'hui</span></div></div>
+    <div class="stats"><div class="stat"><b class="money">${fcfa(total)}</b><span>encaissé aujourd'hui</span></div><div class="stat"><b>${ve.filter(v => v.statut !== "annulee").reduce((t, v) => t + ((v.vente_lignes && v.vente_lignes.length) ? v.vente_lignes.reduce((s, l) => s + (Number(l.quantite) || 1), 0) : 1), 0)}</b><span>vente(s) aujourd'hui</span></div></div>
     ${cashReel !== null ? `<div class="stats"><div class="stat" style="border-color:var(--accent)"><b class="money">${fcfa(cashReel)}</b><span>Argent en caisse (espèces, à l'instant)</span></div></div>` : ""}
     ${ecrit() ? `<div class="btns"><button class="btn full" data-act="newvente">＋ Nouvelle vente</button><button class="btn ghost" data-act="mvc" data-t="depense">Dépense</button></div>` : ""}
     <div class="sec">Ventes du jour</div>
