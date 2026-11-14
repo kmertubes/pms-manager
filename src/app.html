@@ -4898,7 +4898,7 @@ const lirePresta = id => { const v = $("#" + id)?.value || ""; return (v === "__
 }; }
 
 /* ---------- catégorie et nature des dépenses ---------- */
-const CAT_DEP = ["Eneo", "Eau", "Internet", "Internet caméras", "Transport", "Produits de soin", "Fournitures", "Entretien / ménage", "Cotisation Aziccul", "Avance au personnel", "Équipement"];
+const CAT_DEP = ["Eneo", "Eau", "Internet", "Internet caméras", "Transport", "Produits de soin", "Fournitures", "Entretien / ménage", "Collecte Aziccul", "Épargne Aziccul", "Avance au personnel", "Équipement"];
 { const _m = A.mvc; A.mvc = async b => {
   await _m(b); const t = b.dataset.t; if (!["depense", "retrait"].includes(t)) return;
   const l = $("#mc-l")?.closest("label"); if (!l) return;
@@ -4913,7 +4913,7 @@ async function champsDepense(pid, v = {}, cats = CAT_DEP) {
 }
 function brancherDepense() {
   const cat = $("#mc-cat"); if (!cat) return;
-  cat.oninput = () => { const v = cat.value.toLowerCase(); if (/cotis|tontine/.test(v)) $("#mc-nat").value = "cotisation"; else if (/épargne|epargne|aziccul/.test(v)) $("#mc-nat").value = "epargne"; else if (/équipement|equipement|matériel|materiel|investiss/.test(v)) $("#mc-nat").value = "investissement"; else $("#mc-nat").value = "fonctionnement"; };
+  cat.oninput = () => { const v = cat.value.toLowerCase(); if (/épargne|epargne/.test(v)) $("#mc-nat").value = "epargne"; else if (/cotis|tontine|collecte/.test(v)) $("#mc-nat").value = "cotisation"; else if (/équipement|equipement|matériel|materiel|investiss/.test(v)) $("#mc-nat").value = "investissement"; else $("#mc-nat").value = "fonctionnement"; };
   const emp = $("#mc-emp"); if (emp) emp.addEventListener("change", () => { if (emp.value && !cat.value) cat.value = "Produits de soin"; });
 }
 const lireDepense = () => $("#mc-cat") ? { cat: $("#mc-cat").value.trim(), nat: $("#mc-nat").value, emp: lirePresta("mc-emp") } : null;
@@ -5529,7 +5529,7 @@ async function blocInstitutAccueil(pi) {
       ${l("Bar – valeur de vente du stock entrant", totalBar.vente)}
       ${l("Bar – valeur du stock restant (actuel)", totalBar.reste)}` : ""}
       ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
-      <dt>Total Cotisation Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.cotisation)}</b></dd>
+      <dt>Total Collecte Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.cotisation)}</b></dd>
       <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd></dl></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   return `${synth}
