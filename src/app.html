@@ -2362,6 +2362,8 @@ const A6 = {
   doannulmvt: b => act(b, async () => { await rpc("annuler_mouvement", { p_type: b.dataset.k, p_id: b.dataset.id, p_motif: lireMotif() }); closeSheet(); toast("Mouvement annulé"); rendre(); }),
   restaurermvt: b => openSheet("Rétablir ce mouvement", `<p>Le mouvement redevient actif et compte à nouveau dans les totaux.</p>${motif("rm", "Pourquoi le rétablir (obligatoire)")}<button class="btn full ok" data-act="dorestaurermvt" data-id="${b.dataset.id}">Rétablir le mouvement</button>`),
   dorestaurermvt: b => act(b, async () => { await rpc("restaurer_mouvement", { p_id: b.dataset.id, p_motif: lireMotif("rm") }); closeSheet(); toast("Mouvement rétabli"); rendre(); }),
+  archivermvt: b => openSheet("Archiver ce mouvement annulé", `<p>Il disparaîtra de la liste "Mouvements annulés sur cette période" (il reste dans la base, consultable si besoin).</p><button class="btn full" data-act="doarchivermvt" data-id="${b.dataset.id}">Archiver</button>`),
+  doarchivermvt: b => act(b, async () => { await rpc("archiver_mouvement", { p_id: b.dataset.id }); closeSheet(); toast("Mouvement archivé"); rendre(); }),
   opbanque: async () => {
     const cps = await optComptes(null);
     openSheet("Opération bancaire", `<label class="f">Compte<select class="i" id="ob-c">${cps}</select></label>
@@ -5424,11 +5426,11 @@ async function blocMainCouranteInstitut(pi) {
   if (dir() || pdg()) { try {
     const ids = S.caisses.filter(c => c.pole_id === pi.id && c.type !== "hebergement").map(c => c.id);
     const t0 = aDouala(du, T_JOUR).toISOString(), t1 = aDouala(ajoutJours(au, 1), T_JOUR).toISOString();
-    const ann = ids.length ? await q(sb.from("mouvements_caisse").select("id,type,montant,libelle,categorie,created_at").in("caisse_id", ids).eq("annule", true).gte("created_at", t0).lt("created_at", t1).order("created_at", { ascending: false })) : [];
+    const ann = ids.length ? await q(sb.from("mouvements_caisse").select("id,type,montant,libelle,categorie,created_at").in("caisse_id", ids).eq("annule", true).eq("archive", false).gte("created_at", t0).lt("created_at", t1).order("created_at", { ascending: false })) : [];
     annulesHtml = ann.length ? `<div class="sec">Mouvements annulés sur cette période</div>
       <div class="card">${ann.map(m => `<div class="line"><div class="grow"><div class="title" style="text-decoration:line-through">${esc(MVC[m.type] || m.type)}${m.categorie ? " · " + esc(m.categorie) : ""}</div>
         <div class="sub">${ddmmyyyy(jourCompta(new Date(m.created_at)))} · ${heure(m.created_at)}${m.libelle ? " · " + esc(m.libelle) : ""}</div></div><b class="money" style="text-decoration:line-through">${fcfa(m.montant)}</b></div>
-        <div class="line"><span class="grow"></span><button class="btn sm ghost" data-act="restaurermvt" data-id="${m.id}">Rétablir</button></div>`).join("")}</div>` : "";
+        <div class="line"><span class="grow"></span><button class="btn sm ghost" data-act="restaurermvt" data-id="${m.id}">Rétablir</button><button class="btn sm ghost" data-act="archivermvt" data-id="${m.id}">Archiver</button></div>`).join("")}</div>` : "";
   } catch (e) {} }
   return `<div class="sec">Main courante</div>
     <div class="duo"><label class="f">Du<input class="i" type="date" id="mi-du" value="${du}" max="${today()}"></label><label class="f">Au<input class="i" type="date" id="mi-au" value="${au}" max="${today()}"></label></div>
