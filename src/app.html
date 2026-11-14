@@ -4849,6 +4849,7 @@ async function rapportMainCourante(d0, d1, pid) {
   y += 78;
   const fin = [[`REPORT AU ${ddmm(d0)} :`, D.report], ["TOTAL RECETTES :", recT], ...(appT ? [["APPORTS EN CAISSE :", appT]] : []), ["TOTAL GÉNÉRAL :", D.report + recT + appT],
     ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COLLECTE AZICCUL :", aziccul.cotisation, true], ["TOTAL ÉPARGNE AZICCUL :", aziccul.versement, true],
+    ["TOTAL AZICCUL (COLLECTE + ÉPARGNE) :", aziccul.cotisation + aziccul.versement, true],
     ...(vers ? [["VERSEMENTS À LA BANQUE :", vers]] : []), ["SOLDE :", solde]];
   fin.forEach(([a, v, vert], i) => {
     const der = i === fin.length - 1;
@@ -5532,7 +5533,8 @@ async function blocInstitutAccueil(pi) {
       ${l("Bar – valeur du stock restant (actuel)", totalBar.reste)}` : ""}
       ${l(`Total dépenses de la veille (${dateFr(hier)})`, Ty.dep, Ty.dep ? "neg" : "")}
       <dt>Total Collecte Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.cotisation)}</b></dd>
-      <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd></dl></div>
+      <dt>Total Épargne Aziccul</dt><dd class="money pos"><b>${fcfa(aziccul.versement)}</b></dd>
+      <dt><b>Total Aziccul (Collecte + Épargne)</b></dt><dd class="money pos"><b>${fcfa(aziccul.cotisation + aziccul.versement)}</b></dd></dl></div>
     <p class="sub">${bon ? "📈 Bénéfice" : "📉 Perte"} de ${fcfa(Math.abs(delta))} par rapport à hier.</p>`;
   return `${synth}
     <div class="sec">Performance et dépenses de la semaine</div>
