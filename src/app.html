@@ -4637,7 +4637,7 @@ Object.assign(A, {
 { const _tab = A.tab; A.tab = b => { if (S.hist && b.dataset.t !== "resa") S.hist.on = false; return _tab(b); }; }
 /* ======== RAPPORT PDG DE L'INSTITUT : MODÈLE « MAIN COURANTE » (DIVINE LUXURY BEAUTY 17) ======== */
 const estPoleInst = pid => S.poles.find(p => p.id === pid)?.code === "institut";
-const NATURES = { fonctionnement: "Fonctionnement", investissement: "Investissement", cotisation: "Cotisation", epargne: "Épargne" };
+const NATURES = { fonctionnement: "Fonctionnement", investissement: "Investissement", cotisation: "Collecte", epargne: "Épargne" };
 const JSEM = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 const jsem = j => JSEM[new Date(j + "T12:00:00Z").getUTCDay()];
 const ddmm = j => j.slice(8, 10) + "/" + j.slice(5, 7);
@@ -4846,7 +4846,7 @@ async function rapportMainCourante(d0, d1, pid) {
   });
   y += 78;
   const fin = [[`REPORT AU ${ddmm(d0)} :`, D.report], ["TOTAL RECETTES :", recT], ...(appT ? [["APPORTS EN CAISSE :", appT]] : []), ["TOTAL GÉNÉRAL :", D.report + recT + appT],
-    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COTISATIONS :", aziccul.cotisation, true], ["TOTAL ÉPARGNE :", aziccul.versement, true],
+    ["TOTAL INVESTISSEMENT :", nat("investissement")], ["TOTAL FONCTIONNEMENT :", nat("fonctionnement")], ["TOTAL COLLECTE AZICCUL :", aziccul.cotisation, true], ["TOTAL ÉPARGNE AZICCUL :", aziccul.versement, true],
     ...(vers ? [["VERSEMENTS À LA BANQUE :", vers]] : []), ["SOLDE :", solde]];
   fin.forEach(([a, v, vert], i) => {
     const der = i === fin.length - 1;
@@ -4999,7 +4999,7 @@ vCaisseGen = async () => {
       ${l("<b>Total général</b>", T.general)}
       ${l("Total investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Total fonctionnement", T.fon, T.fon ? "neg" : "")}
-      ${l("Total cotisations", T.cot, T.cot ? "neg" : "")}
+      ${l("Total collecte", T.cot, T.cot ? "neg" : "")}
       ${T.epargne ? l(`Total épargne (${dateFr(g.du)} – ${dateFr(g.au)})`, T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}</dl>
       <div class="solde"><span>Solde au ${dateFr(g.au)}</span><span class="money">${fcfa(T.solde)}</span></div></div>
@@ -5520,7 +5520,7 @@ async function blocInstitutAccueil(pi) {
       ${l("<b>Total général</b>", T.general)}
       ${l("Investissement", T.inv, T.inv ? "neg" : "")}
       ${l("Fonctionnement", T.fon, T.fon ? "neg" : "")}
-      ${T.cot ? l("Cotisations", T.cot, "neg") : ""}
+      ${T.cot ? l("Collecte", T.cot, "neg") : ""}
       ${T.epargne ? l(`Épargne du ${dateFr(today())}`, T.epargne, "neg") : ""}
       ${T.vers ? l("Versé à la banque", T.vers) : ""}
       ${l(`Total recettes de la veille (${dateFr(hier)})`, Ty.rec)}
