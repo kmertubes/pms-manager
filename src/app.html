@@ -4668,11 +4668,37 @@ ouvrirResa = async id => {
   const [r] = await q(sb.from("reservations").select("groupe_id").eq("id", id).limit(1));
   if (!r?.groupe_id) return;
   const gs = await q(sb.from("reservations").select("id,espace_id,prix_total,statut").eq("groupe_id", r.groupe_id));
-  const tot = gs.filter(x => x.statut !== "annulee").reduce((t, x) => t + x.prix_total, 0);
+  const actifs = gs.filter(x => x.statut !== "annulee");
+  const tot = actifs.reduce((t, x) => t + x.prix_total, 0);
+  const sol = actifs.length ? await q(sb.from("v_reservations_soldes").select("total_paye").in("id", actifs.map(x => x.id))) : [];
+  const paye = sol.reduce((t, x) => t + x.total_paye, 0), reste = Math.max(0, tot - paye);
   panel.querySelector(".head")?.insertAdjacentHTML("afterend", `<div class="card" style="border-color:var(--accent)"><div class="sec" style="margin:0">Vente combinée · ${gs.length} logements · ${fcfa(tot)}</div>
     <div class="chips">${gs.map(x => `<button data-act="resa" data-id="${x.id}" style="${x.id === id ? "font-weight:800" : ""}">${esc(nomEspace(x.espace_id))} · ${fcfa(x.prix_total)}</button>`).join("")}</div>
-    <p class="sub">Chaque logement a sa propre fiche (arrivée, départ, ménage). Le prix et l'acompte ont été répartis au prorata.</p></div>`);
+    <div class="line"><span class="grow sub">Payé ${fcfa(paye)} sur ${fcfa(tot)}</span><b class="money ${reste > 0 ? "neg" : "pos"}">${reste > 0 ? "Reste " + fcfa(reste) : "Soldé"}</b></div>
+    <p class="sub">Chaque logement a sa propre fiche (arrivée, départ, ménage). Le prix et l'acompte ont été répartis au prorata.</p>
+    ${ecrit() && reste > 0 ? `<button class="btn sm ghost" data-act="acomptegroupe" data-gid="${r.groupe_id}" data-n="${actifs.length}" data-reste="${reste}">Poser un acompte sur le total</button>` : ""}</div>`);
 };
+Object.assign(A, {
+  acomptegroupe: b => openSheet("Acompte sur la vente combinée", `<p class="note">Le montant est réparti au prorata entre les ${b.dataset.n} logements de cette vente.</p>
+    ${champsPaiement("ag", b.dataset.reste)}
+    ${champDateRecu("ag-dt")}
+    <button class="btn full ok" data-act="doacomptegroupe" data-gid="${b.dataset.gid}">Enregistrer l'acompte</button>`),
+  doacomptegroupe: b => act(b, async () => {
+    const p = lirePaiement("ag"); if (!p.montant) throw new Error("Indiquez le montant");
+    const gs = await q(sb.from("reservations").select("id,prix_total").eq("groupe_id", b.dataset.gid).neq("statut", "annulee"));
+    if (!gs.length) throw new Error("Vente introuvable");
+    const base = gs.reduce((t, x) => t + x.prix_total, 0) || 1;
+    const parts = gs.map((x, i) => i < gs.length - 1 ? Math.round(p.montant * x.prix_total / base) : 0);
+    parts[parts.length - 1] = p.montant - parts.reduce((t, v) => t + v, 0);
+    const j = $("#ag-dt")?.value;
+    for (const [i, x] of gs.entries()) {
+      if (parts[i] <= 0) continue;
+      const pid = await rpc("enregistrer_paiement", { p_etablissement: S.etab.id, p_montant: parts[i], p_moyen: p.moyen, p_reservation: x.id, p_reference: p.ref, p_est_acompte: true });
+      if (dir() && j && j !== today()) await rpc("dater_paiement", { p_id: pid, p_jour: j });
+    }
+    toast("Acompte de " + fcfa(p.montant) + " réparti sur " + gs.length + " logement(s)" + (dir() && j && j !== today() ? " au " + dateFr(j) : "")); closeSheet(); rendre(); await ouvrirResa(gs[0].id);
+  }),
+});
 /* ======== VENTE GLOBALE (montant total saisi par le directeur, sans effet sur le stock) ======== */
 { const _bj = blocJournee;
   blocJournee = async c => { const h = await _bj(c); if (!dir() || !h) return h;
