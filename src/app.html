@@ -3640,15 +3640,15 @@ function perMC() {
   const du = S.mcDu || today(), au = S.mcAu || today();
   return du <= au ? [du, au] : [au, du];
 }
-/* Acomptes déjà reçus pour des séjours de la période nov-déc 2026 dont le client n'est pas
-   encore arrivé (quelle que soit la date de l'acompte lui-même) : c'est l'argent qu'on sait déjà
-   nous être dû pour cette période, en attendant l'arrivée. */
+/* Argent déjà reçu (acompte OU solde complet) pour des séjours de la période nov-déc 2026 dont le
+   client n'est pas encore arrivé (quelle que soit la date du paiement lui-même) : c'est l'argent
+   qu'on sait déjà nous être dû pour cette période, en attendant l'arrivée. */
 async function acomptesEnAttenteNovDec() {
   const t0 = aDouala("2026-11-01").toISOString(), t1 = aDouala("2027-01-01").toISOString();
   const rs = await q(sb.from("reservations").select("id,debut,prix_total,clients(nom)")
     .eq("etablissement_id", S.etab.id).gte("debut", t0).lt("debut", t1).in("statut", ["demande", "confirmee"]));
   if (!rs.length) return { total: 0, detail: [] };
-  const pa = await q(sb.from("paiements").select("montant,reservation_id,created_at").in("reservation_id", rs.map(r => r.id)).eq("est_acompte", true).eq("annule", false));
+  const pa = await q(sb.from("paiements").select("montant,reservation_id,created_at").in("reservation_id", rs.map(r => r.id)).eq("annule", false));
   const detail = rs.map(r => ({ id: r.id, nom: r.clients?.nom || "Client", debut: r.debut, prix_total: r.prix_total, acompte: pa.filter(p => p.reservation_id === r.id).reduce((t, p) => t + p.montant, 0) })).filter(x => x.acompte > 0);
   return { total: detail.reduce((t, x) => t + x.acompte, 0), detail };
 }
@@ -3688,7 +3688,7 @@ vResa = async () => {
     ]);
     const libres = logs.length - new Set(occ.map(o => o.espace_id)).size;
     const dispoStat = `<div class="stats">${logs.length ? `<div class="stat" style="border-color:var(--accent)"><b>${libres} / ${logs.length}</b><span>hébergements disponibles</span></div>` : ""}
-      <div class="stat tap" data-act="voiracomptesnd"><b class="money">${fcfa(acomptesND.total)}</b><span>Acomptes reçus en attente d'arrivée (nov-déc)</span></div></div>`;
+      <div class="stat tap" data-act="voiracomptesnd"><b class="money">${fcfa(acomptesND.total)}</b><span>Argent reçu, en attente d'arrivée (nov-déc)</span></div></div>`;
     $("#main").insertAdjacentHTML("afterbegin", bj + dispoStat);
     S._acomptesND = acomptesND.detail;
   }
@@ -5734,7 +5734,7 @@ Object.assign(A, {
   demarcheurs: () => ouvrirDemarcheurs(),
   voiracomptesnd: () => {
     const det = S._acomptesND || [];
-    openSheet("Acomptes en attente d'arrivée (nov-déc)", det.length ? `<div class="card">${det.map(x => `<div class="line tap" data-act="resa" data-id="${x.id}"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}</div></div><b class="money">${fcfa(x.acompte)}</b></div>`).join("")}</div>` : '<div class="empty">Aucun acompte en attente pour cette période.</div>');
+    openSheet("Argent reçu, en attente d'arrivée (nov-déc)", det.length ? `<div class="card">${det.map(x => `<div class="line tap" data-act="resa" data-id="${x.id}"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.acompte >= x.prix_total ? " · soldé" : " · acompte"}</div></div><b class="money">${fcfa(x.acompte)}</b></div>`).join("")}</div>` : '<div class="empty">Aucun paiement en attente pour cette période.</div>');
   },
   verdemarcheur: async b => {
     const id = b.dataset.id, d = (S.demarcheurs || []).find(x => x.id === id); if (!d) return;
