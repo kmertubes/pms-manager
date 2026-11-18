@@ -5609,6 +5609,116 @@ document.addEventListener("wheel", e => {
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
 }
+
+/* ======== DÉMARCHEURS / APPORTEURS D'AFFAIRES ======== */
+{ const _ce = chargerExtra;
+  chargerExtra = async () => { await _ce();
+    S.demarcheurs = await q(sb.from("demarcheurs").select("id,nom,telephone,taux_commission,notes,archive").eq("etablissement_id", S.etab.id).eq("archive", false).order("nom")).catch(() => []);
+  };
+}
+{ const _v = vResa; vResa = async () => { await _v();
+    $("#main")?.querySelector('[data-act="dispo"]')?.insertAdjacentHTML("afterend", '<button class="btn full ghost" data-act="demarcheurs">Démarcheurs / apporteurs d\'affaires</button>');
+  };
+}
+{ const _f = feuilleResa; feuilleResa = d => {
+    _f(d);
+    const lbl = $("#r-prix")?.closest("label.f");
+    if (!lbl) return;
+    lbl.insertAdjacentHTML("afterend", `
+      <label class="f">Prix plein (FCFA, si tarif négocié différent du prix ci-dessus)<input class="i" type="number" id="r-pi" inputmode="numeric" min="0" placeholder="laisser vide si pas de remise"></label>
+      <label class="f">Démarcheur / apporteur d'affaires (facultatif)<select class="i" id="r-dem"><option value="">Aucun</option>${(S.demarcheurs || []).map(x => `<option value="${x.id}">${esc(x.nom)} (${x.taux_commission}%)</option>`).join("")}<option value="__new">+ Nouveau démarcheur…</option></select></label>
+      <div id="r-dem-new" hidden><div class="duo"><label class="f">Nom<input class="i" id="r-dem-nom"></label><label class="f">Téléphone<input class="i" id="r-dem-tel" type="tel"></label></div>
+      <label class="f">Taux de commission (%)<input class="i" type="number" id="r-dem-taux" value="10" inputmode="numeric" min="0" max="100"></label></div>`);
+    $("#r-dem").onchange = () => { $("#r-dem-new").hidden = $("#r-dem").value !== "__new"; };
+  };
+}
+async function resoudreDemarcheur() {
+  const v = $("#r-dem")?.value;
+  if (!v) return null;
+  if (v !== "__new") return v;
+  const nom = $("#r-dem-nom")?.value.trim();
+  if (!nom) throw new Error("Indiquez le nom du démarcheur");
+  const tel = $("#r-dem-tel")?.value.trim() || null, taux = int("#r-dem-taux") || 10;
+  const id = await rpc("creer_demarcheur", { p_etablissement: S.etab.id, p_nom: nom, p_telephone: tel, p_taux: taux });
+  S.demarcheurs = S.demarcheurs || []; S.demarcheurs.push({ id, nom, telephone: tel, taux_commission: taux, archive: false });
+  return id;
+}
+{ const _c = A.creerresa; A.creerresa = async b => {
+    const demId = await resoudreDemarcheur();
+    const prixInitial = int("#r-pi") || null;
+    const avant = await q(sb.from("reservations").select("id").eq("etablissement_id", S.etab.id).order("created_at", { ascending: false }).limit(1)).catch(() => []);
+    await _c(b);
+    if (!demId && !prixInitial) return;
+    const [r] = await q(sb.from("reservations").select("id,groupe_id").eq("etablissement_id", S.etab.id).order("created_at", { ascending: false }).limit(1));
+    if (!r || r.id === avant[0]?.id) return;
+    const patch = {}; if (demId) patch.demarcheur_id = demId; if (prixInitial) patch.prix_initial = prixInitial;
+    if (r.groupe_id) await q(sb.from("reservations").update(patch).eq("groupe_id", r.groupe_id));
+    else await q(sb.from("reservations").update(patch).eq("id", r.id));
+  };
+}
+async function ouvrirDemarcheurs() {
+  openSheet("Démarcheurs / apporteurs d'affaires", `<div id="dem-list">${spinner}</div>
+    <button class="btn full ghost" data-act="nouveaudemarcheur">+ Nouveau démarcheur</button>`);
+  await rafraichirDemarcheurs();
+}
+async function rafraichirDemarcheurs() {
+  const z = $("#dem-list"); if (!z) return;
+  const dems = S.demarcheurs || [];
+  const resas = dems.length ? await q(sb.from("reservations").select("id,demarcheur_id,prix_total,statut").eq("etablissement_id", S.etab.id).not("demarcheur_id", "is", null)) : [];
+  const coms = dems.length ? await q(sb.from("commissions_demarcheur").select("id,demarcheur_id,montant,annule").eq("etablissement_id", S.etab.id).eq("annule", false)) : [];
+  const z2 = $("#dem-list"); if (!z2) return;
+  z2.innerHTML = dems.length ? dems.map(d => {
+    const rs = resas.filter(r => r.demarcheur_id === d.id && r.statut !== "annulee");
+    const genere = rs.reduce((t, r) => t + (r.prix_total || 0), 0);
+    const du = Math.round(genere * d.taux_commission / 100);
+    const paye = coms.filter(c => c.demarcheur_id === d.id).reduce((t, c) => t + c.montant, 0);
+    const reste = du - paye;
+    return `<div class="card tap" data-act="verdemarcheur" data-id="${d.id}"><div class="line"><div class="grow title">${esc(d.nom)}</div><span class="chip">${d.taux_commission}%</span></div>
+      <div class="sub">${rs.length} client(s) · apporté ${fcfa(genere)}</div>
+      <div class="line"><span class="sub grow">Commission due ${fcfa(du)} · payée ${fcfa(paye)}</span>${reste > 0 ? `<span class="chip w">Reste ${fcfa(reste)}</span>` : '<span class="chip ok">À jour</span>'}</div></div>`;
+  }).join("") : '<div class="empty">Aucun démarcheur enregistré.</div>';
+}
+Object.assign(A, {
+  demarcheurs: () => ouvrirDemarcheurs(),
+  verdemarcheur: async b => {
+    const id = b.dataset.id, d = (S.demarcheurs || []).find(x => x.id === id); if (!d) return;
+    const rs = await q(sb.from("reservations").select("id,prix_total,prix_initial,statut,debut,fin,clients(nom)").eq("etablissement_id", S.etab.id).eq("demarcheur_id", id).order("debut", { ascending: false }));
+    const coms = await q(sb.from("commissions_demarcheur").select("id,montant,paye_le,moyen,notes,annule").eq("etablissement_id", S.etab.id).eq("demarcheur_id", id).order("paye_le", { ascending: false }));
+    const genere = rs.filter(r => r.statut !== "annulee").reduce((t, r) => t + (r.prix_total || 0), 0);
+    const du = Math.round(genere * d.taux_commission / 100);
+    const payeTot = coms.filter(c => !c.annule).reduce((t, c) => t + c.montant, 0);
+    openSheet(d.nom, `<p class="sub">${d.telephone ? esc(d.telephone) + " · " : ""}${d.taux_commission}% de commission</p>
+      <div class="sec">Clients apportés (${rs.length})</div>
+      ${rs.map(r => `<div class="card tap" data-act="resa" data-id="${r.id}"><div class="line"><div class="grow title">${esc(r.clients?.nom || "Client")}</div>${chip(RST, r.statut)}</div>
+        <div class="sub">${esc(quand(r.debut))} → ${esc(quand(r.fin))} · ${fcfa(r.prix_total)}${r.prix_initial ? ` (plein tarif ${fcfa(r.prix_initial)})` : ""}</div></div>`).join("") || '<div class="empty">Aucun client.</div>'}
+      <div class="sec">Commission : due ${fcfa(du)} · payée ${fcfa(payeTot)} · reste ${fcfa(Math.max(0, du - payeTot))}</div>
+      ${coms.map(c => `<div class="line"><span class="grow sub">${esc(dateFr(c.paye_le))} · ${esc(c.moyen || "")}${c.annule ? " (annulée)" : ""}</span><span class="money">${fcfa(c.montant)}</span></div>`).join("") || '<p class="sub">Aucun paiement de commission enregistré.</p>'}
+      ${dir() ? `<button class="btn full" data-act="payerdemarcheur" data-id="${id}" data-reste="${Math.max(0, du - payeTot)}">Payer une commission</button>` : ""}`);
+  },
+  payerdemarcheur: b => openSheet("Payer la commission", `
+    <label class="f">Montant (FCFA)<input class="i" type="number" id="pd-mt" value="${b.dataset.reste || ""}" inputmode="numeric" min="0"></label>
+    <label class="f">Moyen<select class="i" id="pd-moy"><option value="especes">Espèces</option><option value="om">Orange Money</option><option value="momo">MoMo</option><option value="virement">Virement</option></select></label>
+    <label class="f">Date<input class="i" type="date" id="pd-jour" value="${today()}" max="${today()}"></label>
+    <label class="f">Note (facultatif)<input class="i" id="pd-note"></label>
+    <button class="btn full ok" data-act="dopayerdemarcheur" data-id="${b.dataset.id}">Enregistrer</button>`),
+  dopayerdemarcheur: b => act(b, async () => {
+    const mt = int("#pd-mt"); if (!mt) throw new Error("Indiquez le montant");
+    await rpc("payer_commission_demarcheur", { p_etablissement: S.etab.id, p_demarcheur: b.dataset.id, p_montant: mt, p_moyen: $("#pd-moy").value, p_jour: $("#pd-jour").value, p_notes: $("#pd-note").value.trim() || null });
+    toast("Commission enregistrée"); closeSheet(); await ouvrirDemarcheurs();
+  }),
+  nouveaudemarcheur: () => openSheet("Nouveau démarcheur", `
+    <label class="f">Nom<input class="i" id="nd-nom"></label>
+    <label class="f">Téléphone<input class="i" id="nd-tel" type="tel"></label>
+    <label class="f">Taux de commission (%)<input class="i" type="number" id="nd-taux" value="10" inputmode="numeric" min="0" max="100"></label>
+    <button class="btn full" data-act="donouveaudemarcheur">Créer</button>`),
+  donouveaudemarcheur: b => act(b, async () => {
+    const nom = $("#nd-nom").value.trim(); if (!nom) throw new Error("Indiquez le nom");
+    const tel = $("#nd-tel").value.trim() || null, taux = int("#nd-taux") || 10;
+    const id = await rpc("creer_demarcheur", { p_etablissement: S.etab.id, p_nom: nom, p_telephone: tel, p_taux: taux });
+    S.demarcheurs = S.demarcheurs || []; S.demarcheurs.push({ id, nom, telephone: tel, taux_commission: taux, archive: false });
+    toast("Démarcheur créé"); closeSheet(); await ouvrirDemarcheurs();
+  }),
+});
 </script>
 </body>
 </html>
