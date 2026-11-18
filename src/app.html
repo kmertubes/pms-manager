@@ -863,17 +863,19 @@ async function calculerDispo() {
   z.innerHTML = spinner;
   const nuits = []; for (let j = da; j < dd; j = ajoutJours(j, 1)) nuits.push(j);
   if (!nuits.length) nuits.push(da);
-  const rs = await q(sb.from("reservations").select("id,espace_id,debut,fin,statut,formules(mode)")
+  const rs = await q(sb.from("reservations").select("id,espace_id,debut,fin,statut,formules(mode),clients(nom)")
     .eq("etablissement_id", S.etab.id).in("statut", ["demande", "confirmee", "en_cours"])
     .lt("debut", aDouala(ajoutJours(nuits[nuits.length - 1], 1)).toISOString()).gte("fin", aDouala(da).toISOString()));
   const logs = S.espaces.filter(e => e.type === "logement");
-  const occupe = e => rs.some(x => (x.espace_id === e.id || (!e.privatisation && S.espaces.find(s => s.id === x.espace_id)?.privatisation)) && nuits.some(j => couvre(x, j)));
+  const resaDe = e => rs.find(x => (x.espace_id === e.id || (!e.privatisation && S.espaces.find(s => s.id === x.espace_id)?.privatisation)) && nuits.some(j => couvre(x, j)));
+  const occupe = e => !!resaDe(e);
   const libres = logs.filter(e => !occupe(e)), occ = logs.filter(e => occupe(e));
   const z2 = $("#dp-res"); if (!z2) return;
   z2.innerHTML = `<p class="sub">${esc(dateFr(da))} → ${esc(dateFr(dd))} (${nuits.length} nuit${nuits.length > 1 ? "s" : ""})</p>
     <div class="sec">Disponibles (${libres.length})</div>
     ${libres.map(e => `<div class="card tap" ${ecrit() ? `data-act="newresa" data-espace="${e.id}" data-jour="${da}"` : ""}><div class="line"><div class="grow title">${esc(e.nom)}</div><span class="chip ok">Libre</span></div></div>`).join("") || '<div class="empty">Aucun logement libre sur cette période.</div>'}
-    ${occ.length ? `<div class="sec">Déjà occupés (${occ.length})</div>${occ.map(e => `<div class="card"><div class="line"><div class="grow title">${esc(e.nom)}</div><span class="chip w">Occupé</span></div></div>`).join("")}` : ""}`;
+    ${occ.length ? `<div class="sec">Déjà occupés (${occ.length})</div>${occ.map(e => { const r = resaDe(e); return `<div class="card tap" data-act="resa" data-id="${r.id}"><div class="line"><div class="grow title">${esc(e.nom)}</div><span class="chip w">Occupé</span></div>
+      <div class="sub">${esc(r.clients?.nom || "Client")} · ${esc(quand(r.debut))} → ${esc(quand(r.fin))}</div></div>`; }).join("")}</div>` : ""}`;
 }
 function calculResa(x) {
   const j = $("#r-date").value || today(), h = $("#r-h").value || "13:00";
