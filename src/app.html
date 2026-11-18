@@ -3648,20 +3648,22 @@ async function acomptesEnAttenteNovDec() {
   const rs = await q(sb.from("reservations").select("id,debut,prix_total,clients(nom)")
     .eq("etablissement_id", S.etab.id).gte("debut", t0).lt("debut", t1).in("statut", ["demande", "confirmee"]));
   if (!rs.length) return { total: 0, detail: [] };
-  const [pa, coms] = await Promise.all([
+  const [pa, coms, sor] = await Promise.all([
     q(sb.from("paiements").select("montant,reservation_id,created_at").in("reservation_id", rs.map(r => r.id)).eq("annule", false)),
     q(sb.from("commissions_demarcheur").select("montant,reservation_id").in("reservation_id", rs.map(r => r.id)).eq("annule", false)),
+    q(sb.from("mouvement_reservations").select("montant,reservation_id,mouvements_caisse(annule)").in("reservation_id", rs.map(r => r.id))),
   ]);
   const detail = rs.map(r => {
     const brut = pa.filter(p => p.reservation_id === r.id).reduce((t, p) => t + p.montant, 0);
     const commission = coms.filter(c => c.reservation_id === r.id).reduce((t, c) => t + c.montant, 0);
-    return { id: r.id, nom: r.clients?.nom || "Client", debut: r.debut, prix_total: r.prix_total, acompte: brut, commission, net: brut - commission };
+    const sortie = sor.filter(m => m.reservation_id === r.id && !m.mouvements_caisse?.annule).reduce((t, m) => t + m.montant, 0);
+    return { id: r.id, nom: r.clients?.nom || "Client", debut: r.debut, prix_total: r.prix_total, acompte: brut, commission, sortie, net: brut - commission - sortie };
   }).filter(x => x.acompte > 0);
   return { total: detail.reduce((t, x) => t + x.net, 0), detail };
 }
 function blocAcomptesND(detail) {
   const solde = detail.filter(x => x.acompte >= x.prix_total), part = detail.filter(x => x.acompte < x.prix_total);
-  const ligne = x => `<div class="card tap" data-act="resa" data-id="${x.id}"><div class="line"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.commission ? ` · commission versée ${fcfa(x.commission)}` : ""}</div></div><b class="money">${fcfa(x.net)}</b></div></div>`;
+  const ligne = x => `<div class="card tap" data-act="resa" data-id="${x.id}"><div class="line"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.commission ? ` · commission versée ${fcfa(x.commission)}` : ""}${x.sortie ? ` · remis ailleurs ${fcfa(x.sortie)}` : ""}</div></div><b class="money">${fcfa(x.net)}</b></div></div>`;
   return `<div class="sec">Soldés, en attente d'arrivée (${solde.length})</div>
     ${solde.map(ligne).join("") || '<div class="empty">Aucun client soldé en attente pour nov-déc.</div>'}
     <div class="sec">Acomptes reçus, en attente d'arrivée (${part.length})</div>
@@ -3703,9 +3705,11 @@ vResa = async () => {
     ]);
     const libres = logs.length - new Set(occ.map(o => o.espace_id)).size;
     const dispoStat = `<div class="stats">${logs.length ? `<div class="stat" style="border-color:var(--accent)"><b>${libres} / ${logs.length}</b><span>hébergements disponibles</span></div>` : ""}
-      <div class="stat"><b class="money">${fcfa(acomptesND.total)}</b><span>Argent reçu, en attente d'arrivée (nov-déc)</span></div></div>`;
+      <div class="stat"><b class="money">${fcfa(acomptesND.total)}</b><span>Argent reçu, en attente d'arrivée (nov-déc)</span></div></div>
+      ${dir() && acomptesND.detail.length ? `<button class="btn sm ghost" data-act="sortiecaisseresa">Sortie de caisse (argent remis ailleurs)</button>` : ""}`;
     $("#main").insertAdjacentHTML("afterbegin", bj + dispoStat);
     S._acomptesND = acomptesND.detail;
+    S._acomptesCaisse = c.id;
     $("#main").insertAdjacentHTML("beforeend", blocAcomptesND(acomptesND.detail));
   }
   $("#main").insertAdjacentHTML("beforeend", await blocMainCouranteHebergement());
@@ -5776,8 +5780,30 @@ Object.assign(A, {
   demarcheurs: () => ouvrirDemarcheurs(),
   voiracomptesnd: () => {
     const det = S._acomptesND || [];
-    openSheet("Argent reçu, en attente d'arrivée (nov-déc)", det.length ? `<div class="card">${det.map(x => `<div class="line tap" data-act="resa" data-id="${x.id}"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.acompte >= x.prix_total ? " · soldé" : " · acompte"}${x.commission ? ` · commission versée ${fcfa(x.commission)}` : ""}</div></div><b class="money">${fcfa(x.net)}</b></div>`).join("")}</div>` : '<div class="empty">Aucun paiement en attente pour cette période.</div>');
+    openSheet("Argent reçu, en attente d'arrivée (nov-déc)", det.length ? `<div class="card">${det.map(x => `<div class="line tap" data-act="resa" data-id="${x.id}"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.acompte >= x.prix_total ? " · soldé" : " · acompte"}${x.commission ? ` · commission versée ${fcfa(x.commission)}` : ""}${x.sortie ? ` · remis ailleurs ${fcfa(x.sortie)}` : ""}</div></div><b class="money">${fcfa(x.net)}</b></div>`).join("")}</div>` : '<div class="empty">Aucun paiement en attente pour cette période.</div>');
   },
+  sortiecaisseresa: () => {
+    const det = (S._acomptesND || []).filter(x => x.net > 0);
+    if (!det.length) { toast("Rien à sortir : tous les montants sont déjà à zéro."); return; }
+    openSheet("Sortie de caisse (argent remis ailleurs)", `<p class="note">Cochez les clients dont l'argent n'est plus physiquement en caisse (remis à la PDG, par exemple). Le montant de chaque ligne est déduit du report de caisse ; la case correspondante reste par ailleurs correctement soldée pour le client.</p>
+      <div class="card">${det.map(x => `<label class="check"><input type="checkbox" data-sc="${x.id}" data-mt="${x.net}" checked><span class="grow">${esc(x.nom)}</span><b class="money">${fcfa(x.net)}</b></label>`).join("")}</div>
+      <div class="line"><span class="grow sub">Total sélectionné</span><b class="money" id="sc-tot">${fcfa(det.reduce((t, x) => t + x.net, 0))}</b></div>
+      <label class="f">Motif / destinataire<input class="i" id="sc-l" value="Remis à la PDG"></label>
+      ${champDateRecu("sc-dt")}
+      <button class="btn full bad" data-act="dosortiecaisseresa">Enregistrer la sortie</button>`);
+    const maj = () => { const t = [...document.querySelectorAll("[data-sc]:checked")].reduce((s, c) => s + +c.dataset.mt, 0); const el = $("#sc-tot"); if (el) el.textContent = fcfa(t); };
+    document.querySelectorAll("[data-sc]").forEach(c => c.onchange = maj);
+  },
+  dosortiecaisseresa: b => act(b, async () => {
+    const coches = [...document.querySelectorAll("[data-sc]:checked")];
+    if (!coches.length) throw new Error("Cochez au moins un client");
+    const libelle = $("#sc-l").value.trim(); if (!libelle) throw new Error("Indiquez le motif");
+    const reservations = coches.map(c => ({ id: c.dataset.sc, montant: +c.dataset.mt }));
+    const total = reservations.reduce((t, r) => t + r.montant, 0);
+    const mid = await rpc("sortie_caisse_reservations", { p_caisse: S._acomptesCaisse, p_libelle: libelle, p_reservations: reservations });
+    const j = $("#sc-dt")?.value; if (dir() && j && j !== today()) await rpc("dater_mouvement", { p_id: mid, p_jour: j }).catch(() => {});
+    toast("Sortie de " + fcfa(total) + " enregistrée sur " + reservations.length + " client(s)"); closeSheet(); rendre();
+  }),
   verdemarcheur: async b => {
     const id = b.dataset.id, d = (S.demarcheurs || []).find(x => x.id === id); if (!d) return;
     const rs = await q(sb.from("reservations").select("id,prix_total,prix_initial,statut,debut,fin,clients(nom)").eq("etablissement_id", S.etab.id).eq("demarcheur_id", id).order("debut", { ascending: false }));
