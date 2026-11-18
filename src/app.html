@@ -3648,13 +3648,20 @@ async function acomptesEnAttenteNovDec() {
   const rs = await q(sb.from("reservations").select("id,debut,prix_total,clients(nom)")
     .eq("etablissement_id", S.etab.id).gte("debut", t0).lt("debut", t1).in("statut", ["demande", "confirmee"]));
   if (!rs.length) return { total: 0, detail: [] };
-  const pa = await q(sb.from("paiements").select("montant,reservation_id,created_at").in("reservation_id", rs.map(r => r.id)).eq("annule", false));
-  const detail = rs.map(r => ({ id: r.id, nom: r.clients?.nom || "Client", debut: r.debut, prix_total: r.prix_total, acompte: pa.filter(p => p.reservation_id === r.id).reduce((t, p) => t + p.montant, 0) })).filter(x => x.acompte > 0);
-  return { total: detail.reduce((t, x) => t + x.acompte, 0), detail };
+  const [pa, coms] = await Promise.all([
+    q(sb.from("paiements").select("montant,reservation_id,created_at").in("reservation_id", rs.map(r => r.id)).eq("annule", false)),
+    q(sb.from("commissions_demarcheur").select("montant,reservation_id").in("reservation_id", rs.map(r => r.id)).eq("annule", false)),
+  ]);
+  const detail = rs.map(r => {
+    const brut = pa.filter(p => p.reservation_id === r.id).reduce((t, p) => t + p.montant, 0);
+    const commission = coms.filter(c => c.reservation_id === r.id).reduce((t, c) => t + c.montant, 0);
+    return { id: r.id, nom: r.clients?.nom || "Client", debut: r.debut, prix_total: r.prix_total, acompte: brut, commission, net: brut - commission };
+  }).filter(x => x.acompte > 0);
+  return { total: detail.reduce((t, x) => t + x.net, 0), detail };
 }
 function blocAcomptesND(detail) {
   const solde = detail.filter(x => x.acompte >= x.prix_total), part = detail.filter(x => x.acompte < x.prix_total);
-  const ligne = x => `<div class="card tap" data-act="resa" data-id="${x.id}"><div class="line"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}</div></div><b class="money">${fcfa(x.acompte)}</b></div></div>`;
+  const ligne = x => `<div class="card tap" data-act="resa" data-id="${x.id}"><div class="line"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.commission ? ` · commission versée ${fcfa(x.commission)}` : ""}</div></div><b class="money">${fcfa(x.net)}</b></div></div>`;
   return `<div class="sec">Soldés, en attente d'arrivée (${solde.length})</div>
     ${solde.map(ligne).join("") || '<div class="empty">Aucun client soldé en attente pour nov-déc.</div>'}
     <div class="sec">Acomptes reçus, en attente d'arrivée (${part.length})</div>
@@ -5743,7 +5750,7 @@ Object.assign(A, {
   demarcheurs: () => ouvrirDemarcheurs(),
   voiracomptesnd: () => {
     const det = S._acomptesND || [];
-    openSheet("Argent reçu, en attente d'arrivée (nov-déc)", det.length ? `<div class="card">${det.map(x => `<div class="line tap" data-act="resa" data-id="${x.id}"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.acompte >= x.prix_total ? " · soldé" : " · acompte"}</div></div><b class="money">${fcfa(x.acompte)}</b></div>`).join("")}</div>` : '<div class="empty">Aucun paiement en attente pour cette période.</div>');
+    openSheet("Argent reçu, en attente d'arrivée (nov-déc)", det.length ? `<div class="card">${det.map(x => `<div class="line tap" data-act="resa" data-id="${x.id}"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}${x.acompte >= x.prix_total ? " · soldé" : " · acompte"}${x.commission ? ` · commission versée ${fcfa(x.commission)}` : ""}</div></div><b class="money">${fcfa(x.net)}</b></div>`).join("")}</div>` : '<div class="empty">Aucun paiement en attente pour cette période.</div>');
   },
   verdemarcheur: async b => {
     const id = b.dataset.id, d = (S.demarcheurs || []).find(x => x.id === id); if (!d) return;
