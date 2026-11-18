@@ -3652,6 +3652,14 @@ async function acomptesEnAttenteNovDec() {
   const detail = rs.map(r => ({ id: r.id, nom: r.clients?.nom || "Client", debut: r.debut, prix_total: r.prix_total, acompte: pa.filter(p => p.reservation_id === r.id).reduce((t, p) => t + p.montant, 0) })).filter(x => x.acompte > 0);
   return { total: detail.reduce((t, x) => t + x.acompte, 0), detail };
 }
+function blocAcomptesND(detail) {
+  const solde = detail.filter(x => x.acompte >= x.prix_total), part = detail.filter(x => x.acompte < x.prix_total);
+  const ligne = x => `<div class="card tap" data-act="resa" data-id="${x.id}"><div class="line"><div class="grow"><div class="title">${esc(x.nom)}</div><div class="sub">Arrivée le ${esc(dateFr(jourDe(x.debut)))} · total séjour ${fcfa(x.prix_total)}</div></div><b class="money">${fcfa(x.acompte)}</b></div></div>`;
+  return `<div class="sec">Soldés, en attente d'arrivée (${solde.length})</div>
+    ${solde.map(ligne).join("") || '<div class="empty">Aucun client soldé en attente pour nov-déc.</div>'}
+    <div class="sec">Acomptes reçus, en attente d'arrivée (${part.length})</div>
+    ${part.map(ligne).join("") || '<div class="empty">Aucun acompte en attente pour nov-déc.</div>'}`;
+}
 async function blocMainCouranteHebergement() {
   const [du, au] = perMC();
   const pole = poleResidence();
@@ -3688,9 +3696,10 @@ vResa = async () => {
     ]);
     const libres = logs.length - new Set(occ.map(o => o.espace_id)).size;
     const dispoStat = `<div class="stats">${logs.length ? `<div class="stat" style="border-color:var(--accent)"><b>${libres} / ${logs.length}</b><span>hébergements disponibles</span></div>` : ""}
-      <div class="stat tap" data-act="voiracomptesnd"><b class="money">${fcfa(acomptesND.total)}</b><span>Argent reçu, en attente d'arrivée (nov-déc)</span></div></div>`;
+      <div class="stat"><b class="money">${fcfa(acomptesND.total)}</b><span>Argent reçu, en attente d'arrivée (nov-déc)</span></div></div>`;
     $("#main").insertAdjacentHTML("afterbegin", bj + dispoStat);
     S._acomptesND = acomptesND.detail;
+    $("#main").insertAdjacentHTML("beforeend", blocAcomptesND(acomptesND.detail));
   }
   $("#main").insertAdjacentHTML("beforeend", await blocMainCouranteHebergement());
 };
