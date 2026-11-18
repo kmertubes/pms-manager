@@ -5759,7 +5759,7 @@ Object.assign(A, {
       ${rs.map(r => `<div class="card tap" data-act="resa" data-id="${r.id}"><div class="line"><div class="grow title">${esc(r.clients?.nom || "Client")}</div>${chip(RST, r.statut)}</div>
         <div class="sub">${esc(quand(r.debut))} → ${esc(quand(r.fin))} · ${fcfa(r.prix_total)}${r.prix_initial ? ` (plein tarif ${fcfa(r.prix_initial)})` : ""}</div></div>`).join("") || '<div class="empty">Aucun client.</div>'}
       <div class="sec">Commission : due ${fcfa(du)} · payée ${fcfa(payeTot)} · reste ${fcfa(Math.max(0, du - payeTot))}</div>
-      ${coms.map(c => `<div class="line"><span class="grow sub">${esc(dateFr(c.paye_le))} · ${esc(c.moyen || "")}${c.annule ? " (annulée)" : ""}</span><span class="money">${fcfa(c.montant)}</span></div>`).join("") || '<p class="sub">Aucun paiement de commission enregistré.</p>'}
+      ${coms.map(c => `<div class="line"><span class="grow sub">${esc(dateFr(c.paye_le))} · ${esc(c.moyen || "")}${c.annule ? " (annulée)" : ""}</span><span class="money">${fcfa(c.montant)}</span>${dir() && !c.annule ? `<button class="btn sm ghost" data-act="modifiercommission" data-id="${c.id}" data-dem="${id}">Modifier</button><button class="btn sm ghost" data-act="annulercommission" data-id="${c.id}" data-dem="${id}">Annuler</button>` : ""}</div>`).join("") || '<p class="sub">Aucun paiement de commission enregistré.</p>'}
       ${dir() ? `<button class="btn full" data-act="payerdemarcheur" data-id="${id}" data-reste="${Math.max(0, du - payeTot)}">Payer une commission</button>` : ""}`);
   },
   modifierdemarcheur: b => {
@@ -5813,6 +5813,38 @@ Object.assign(A, {
     const id = await rpc("creer_demarcheur", { p_etablissement: S.etab.id, p_nom: nom, p_telephone: tel, p_taux: taux, p_adresse: adr });
     S.demarcheurs = S.demarcheurs || []; S.demarcheurs.push({ id, nom, telephone: tel, taux_commission: taux, adresse: adr, archive: false });
     toast("Démarcheur créé"); closeSheet(); await ouvrirDemarcheurs();
+  }),
+  modifiercommission: async b => {
+    const cid = b.dataset.id, demId = b.dataset.dem;
+    const c = await q(sb.from("commissions_demarcheur").select("id,montant,paye_le,moyen,notes").eq("id", cid));
+    const d = c[0]; if (!d) return;
+    openSheet("Modifier la commission", `
+      <label class="f">Montant (FCFA)<input class="i" type="number" id="mc-mt" value="${d.montant}" inputmode="numeric" min="0"></label>
+      <label class="f">Moyen<select class="i" id="mc-moy"><option value="especes"${d.moyen === "especes" ? " selected" : ""}>Espèces</option><option value="om"${d.moyen === "om" ? " selected" : ""}>Orange Money</option><option value="momo"${d.moyen === "momo" ? " selected" : ""}>MoMo</option><option value="virement"${d.moyen === "virement" ? " selected" : ""}>Virement</option></select></label>
+      <label class="f">Date<input class="i" type="date" id="mc-jour" value="${esc(String(d.paye_le || "").slice(0, 10))}" max="${today()}"></label>
+      <label class="f">Note (facultatif)<input class="i" id="mc-note" value="${esc(d.notes || "")}"></label>
+      <button class="btn full" data-act="domodifiercommission" data-id="${cid}" data-dem="${demId}">Enregistrer</button>`);
+  },
+  domodifiercommission: b => act(b, async () => {
+    const mt = int("#mc-mt"); if (!mt) throw new Error("Indiquez le montant");
+    const moy = $("#mc-moy").value, jour = $("#mc-jour").value, note = $("#mc-note").value.trim() || null;
+    await rpc("modifier_commission_demarcheur", { p_id: b.dataset.id, p_montant: mt, p_moyen: moy, p_jour: jour, p_notes: note });
+    toast("Commission modifiée"); closeSheet();
+    await ouvrirDemarcheurs();
+    const d2 = (S.demarcheurs || []).find(x => x.id === b.dataset.dem);
+    if (d2) await A.verdemarcheur({ dataset: { id: d2.id } });
+  }),
+  annulercommission: b => openSheet("Annuler la commission", `
+    <p class="sub">Cette annulation annule aussi le mouvement de caisse lié, s'il existe.</p>
+    ${motif("ac-mo", "Raison de l'annulation")}
+    <button class="btn full bad" data-act="doannulercommission" data-id="${b.dataset.id}" data-dem="${b.dataset.dem}">Confirmer l'annulation</button>`),
+  doannulercommission: b => act(b, async () => {
+    const mo = $("#ac-mo").value.trim() || null;
+    await rpc("annuler_commission_demarcheur", { p_id: b.dataset.id, p_motif: mo });
+    toast("Commission annulée"); closeSheet();
+    await ouvrirDemarcheurs();
+    const d2 = (S.demarcheurs || []).find(x => x.id === b.dataset.dem);
+    if (d2) await A.verdemarcheur({ dataset: { id: d2.id } });
   }),
 });
 </script>
